@@ -51,7 +51,7 @@ for ticker in tickerStrings:
                                                       round(dataFrame['Low'][dataIndex]*multiplier,2), 
                                                       round(dataFrame['Close'][dataIndex]*multiplier,2), 
                                                       round(dataFrame['Close'][dataIndex]*multiplier,2),
-                                                      round(dataFrame['Volume'][dataIndex]*multiplier,2)
+                                                      round(dataFrame['Volume'][dataIndex],2)
                                                       ))
                 
     except:

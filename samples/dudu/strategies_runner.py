@@ -15,29 +15,23 @@ from backtrader.analyzers import (AnnualReturn, DrawDown, TimeDrawDown, SharpeRa
                                   TradeAnalyzer, annualreturn)
 
 from analyzers import *
+from backtrader.analyzers.sharpe import SharpeRatio_A
 from strategies import *
-from commissions import DegiroCommission
+from commissions import *
 from strategies_plot import my_heatmap
 
 def printResults(final_results_list):
     print('Parameter Name\t\tOldStrategy\t\tNew Strategy')
     print('--------------\t\t-----------\t\t------------')
-    print('Start Worth\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][0], final_results_list[1][0][0]) )
-    print('End Worth\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][1], final_results_list[1][0][1]) )
-    print('PNL\t\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][2], final_results_list[1][0][2]) )
-    print('Annualised returns\t%.2F\t\t\t%.2F'% (final_results_list[0][0][3], final_results_list[1][0][3]) )
+    print('Start Worth\t\t%.2F\t\t%.2F'% (final_results_list[0][0][0], final_results_list[1][0][0]) )
+    print('End Worth\t\t%.2F\t\t%.2F'% (final_results_list[0][0][1], final_results_list[1][0][1]) )
+    print('PNL\t\t\t%.2F\t\t%.2F'% (final_results_list[0][0][2], final_results_list[1][0][2]) )
+    print('Annualised returns\t%.2F%%\t\t\t%.2F%%'% (final_results_list[0][0][3], final_results_list[1][0][3]) )
     print('Annualised volatility\t%.2F\t\t\t%.2F'% (final_results_list[0][0][4], final_results_list[1][0][4]) )
+    print('Sharpe\t\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][5], final_results_list[1][0][5]) )
+    print('Draw Down\t\t%.2F%%\t\t\t%.2F%%'% (final_results_list[0][0][6], final_results_list[1][0][6]) )
+    print('Draw Down Period (Days)\t%.2F\t\t\t%.2F'% (final_results_list[0][0][7], final_results_list[1][0][7]) )
     
-    '''
-
-
-Sharpe ratio
-Sortino ratio
-Beta
-Maximum drawdown
-Number of transactions
-Mnthly average transactions
-'''
 
 def runstrategy():
     args = parse_args()
@@ -47,11 +41,13 @@ def runstrategy():
     todate = datetime.datetime.strptime(args.todate, '%Y-%m-%d')
 
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    datapath = os.path.join(modpath, args.data)
+    datapath = os.path.join(modpath, args.data + args.symbol + '.csv')
 
     final_results_list = []
     strategies_list = [OldStrategy, OldStrategy]
+
     for strat in strategies_list:
+        # Need to do something smarter that takes several files
         #path = os.path.join(datapath, f'{file}')
         data = bt.feeds.YahooFinanceCSVData(
             dataname=datapath,
@@ -59,18 +55,21 @@ def runstrategy():
             todate=todate,
             tframes=bt.TimeFrame.Minutes
         )
-
+        loader = TransactionsLoader()
         cerebro = bt.Cerebro(optreturn=False)
+
+        # Need to handle several datas together
         cerebro.adddata(data, name='MyData0')
-        cerebro.addstrategy(OldStrategy, symbol='ICCM.TA', priceSize=1)
+        cerebro.addstrategy(strat, symbol=args.symbol, priceSize=1, TransactionsLoader=loader)
 
         results_list = []
 
         cerebro.broker.set_coc(True)
+        # Need to set smarter the cash
         cerebro.broker.setcash(args.cash)
         #cerebro.addsizer(MaxRiskSizer)
-        comminfo = DegiroCommission()
-        #cerebro.broker.addcommissioninfo(comminfo)
+        comminfo = PoalimCommission()
+        cerebro.broker.addcommissioninfo(comminfo)
 
         tframes = dict(
             days=bt.TimeFrame.Days,
@@ -80,38 +79,38 @@ def runstrategy():
 
         # Add the Analyzers
         cerebro.addanalyzer(SQN)
-        if args.legacyannual:
-            cerebro.addanalyzer(AnnualReturn, _name='time_return')
-            cerebro.addanalyzer(SharpeRatio, legacyannual=True)
-        else:
-            cerebro.addanalyzer(TimeReturn, _name='time_return', timeframe=tframes[args.tframe])
-            cerebro.addanalyzer(SharpeRatio, timeframe=tframes[args.tframe])
-            cerebro.addanalyzer(Volatility)
-
+        cerebro.addanalyzer(TimeReturn, _name='time_return', timeframe=tframes[args.tframe])
+        cerebro.addanalyzer(SharpeRatio_A, timeframe=tframes[args.tframe], stddev_sample=True)
+        cerebro.addanalyzer(Volatility)
+        cerebro.addanalyzer(DrawDown)
+        cerebro.addanalyzer(TimeDrawDown, timeframe=bt.TimeFrame.Years)
         cerebro.addanalyzer(TradeAnalyzer)
         
         st0 = cerebro.run()
-
-        
-        
         
         my_dict = st0[0].analyzers.time_return.get_analysis()
         annual_returns = [v for _, v in my_dict.items()]
         
-
         startWorth = args.cash
         endWorth = round(st0[0].broker.get_value(), 2)
         PnL = round(st0[0].broker.get_value() - args.cash, 2)
-        compaund_annual_return = np.power(endWorth / startWorth, 1/len(annual_returns))-1
+        compaund_annual_return = np.power(endWorth / startWorth, 1 / loader.Years())-1
         annualReturn = round(compaund_annual_return*100, 2)
-        volatility = st0[0].analyzers.volatility.get_analysis()['volatility']
+        volatility = round(st0[0].analyzers.volatility.get_analysis()['volatility']*100,2)
+        sharpe = round(st0[0].analyzers.sharperatio_a.get_analysis()['sharperatio'],2)
+        drawDownPercentage = round(st0[0].analyzers.drawdown.get_analysis()['max']['drawdown'],2)
+        drawDownPeriod = round(st0[0].analyzers.drawdown.get_analysis()['max']['len'] / 25,2)
+
 
         results_list.append([
             startWorth,
             endWorth,
             PnL,
             annualReturn,
-            volatility
+            volatility,
+            sharpe,
+            drawDownPercentage,
+            drawDownPeriod
 
         ])
         final_results_list.append(results_list)
@@ -129,8 +128,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description='TimeReturn')
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
 
+    parser.add_argument('--symbol', '-s',
+                        default='ICCM.TA',
+                        help='specific symbol to add to the system')
+
     parser.add_argument('--data', '-d',
-                        default=os.path.join(modpath,'../../datas/ICCM.TA.csv'),
+                        default=os.path.join(modpath,'../../datas/'),
                         help='data to add to the system')
 
     parser.add_argument('--fromdate', '-f',
@@ -158,7 +161,7 @@ def parse_args():
     group.add_argument('--legacyannual', action='store_true',
                        help='Use legacy annual return analyzer')
 
-    parser.add_argument('--cash', default=50000, type=int,
+    parser.add_argument('--cash', default=100000, type=int,
                         help='Starting Cash')
 
     parser.add_argument('--plot', '-p', action='store_true',

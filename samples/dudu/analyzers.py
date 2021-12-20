@@ -155,7 +155,10 @@ class Volatility(Analyzer):
             # Get the returns from the subanalyzer
             returns = list(itervalues(self.timereturn.get_analysis()))
             retdev = standarddev(returns)
-            volatility = retdev * sqrt(len(returns))
+            tradingDays = len(returns)
+            years = math.ceil(tradingDays / 252)
+            averageDaysInYear = tradingDays / years
+            volatility = retdev * sqrt(averageDaysInYear)
 
             
 
