@@ -23,17 +23,30 @@ from commissions import *
 from strategies_plot import my_heatmap
 
 def printResults(final_results_list):
-    print('Parameter Name\t\tOldStrategy\t\tNew Strategy')
-    print('--------------\t\t-----------\t\t------------')
-    print('Start Worth\t\t%.2F\t\t%.2F'% (final_results_list[0][0][0], final_results_list[1][0][0]) )
-    print('End Worth\t\t%.2F\t\t%.2F'% (final_results_list[0][0][1], final_results_list[1][0][1]) )
-    print('PNL\t\t\t%.2F\t\t%.2F'% (final_results_list[0][0][2], final_results_list[1][0][2]) )
-    print('Annualised returns\t%.2F%%\t\t\t%.2F%%'% (final_results_list[0][0][3], final_results_list[1][0][3]) )
-    print('Annualised volatility\t%.2F\t\t\t%.2F'% (final_results_list[0][0][4], final_results_list[1][0][4]) )
-    print('Sharpe\t\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][5], final_results_list[1][0][5]) )
-    print('Draw Down\t\t%.2F%%\t\t\t%.2F%%'% (final_results_list[0][0][6], final_results_list[1][0][6]) )
-    print('Draw Down Period (Days)\t%.2F\t\t\t%.2F'% (final_results_list[0][0][7], final_results_list[1][0][7]) )
+    print('Parameter Name\t\t\tOldStrategy\t\tNew Strategy')
+    print('--------------\t\t\t-----------\t\t------------')
+    print('Start Worth\t\t\t%.2F\t\t%.2F'% (final_results_list[0][0][0], final_results_list[1][0][0]) )
+    print('End Worth\t\t\t%.2F\t\t%.2F'% (final_results_list[0][0][1], final_results_list[1][0][1]) )
+    print('PNL\t\t\t\t%.2F\t\t%.2F'% (final_results_list[0][0][2], final_results_list[1][0][2]) )
+    print('Annualised returns\t\t%.2F%%\t\t\t%.2F%%'% (final_results_list[0][0][3], final_results_list[1][0][3]) )
+    print('Annualised volatility\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][4], final_results_list[1][0][4]) )
+    print('Sharpe\t\t\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][5], final_results_list[1][0][5]) )
+    print('Draw Down\t\t\t%.2F%%\t\t\t%.2F%%'% (final_results_list[0][0][6], final_results_list[1][0][6]) )
+    print('Draw Down Period (Days)\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][7], final_results_list[1][0][7]) )
     
+    drawdownsStrings = {}
+    drawdownsPeriodStrings = {}
+    for key in (final_results_list[0][0][8]):
+        drawdownsStrings[key] = 'Draw Down %s\t\t\t%.2F%%'% (key,final_results_list[0][0][8][key].max.drawdown)
+        drawdownsPeriodStrings[key] = 'Draw Down Period (Days) %s\t%.2F'% (key,final_results_list[0][0][8][key].max.len/24)
+    
+    for key in (final_results_list[1][0][8]):
+        drawdownsStrings[key] = drawdownsStrings[key] + '\t\t\t%.2F%%'% (final_results_list[1][0][8][key].max.drawdown)
+        drawdownsPeriodStrings[key] = drawdownsPeriodStrings[key] + '\t\t\t%.2F'% (final_results_list[1][0][8][key].max.len/24)
+
+    for stringkey in drawdownsStrings:
+        print(drawdownsStrings[stringkey])
+        print(drawdownsPeriodStrings[stringkey])
 
 def runstrategy():
     args = parse_args()
@@ -87,9 +100,8 @@ def runstrategy():
         cerebro.addanalyzer(TimeReturn, _name='time_return', timeframe=tframes[args.tframe])
         cerebro.addanalyzer(SharpeRatio_A, timeframe=tframes[args.tframe], stddev_sample=True)
         cerebro.addanalyzer(Volatility)
-        cerebro.addanalyzer(DrawDown)
-        cerebro.addanalyzer(TimeDrawDown, timeframe=bt.TimeFrame.Years)
-        cerebro.addanalyzer(TradeAnalyzer)
+        #cerebro.addanalyzer(TradeAnalyzer)
+        cerebro.addanalyzer(DrawDownPerYear)
         
         st0 = cerebro.run()
         
@@ -103,8 +115,9 @@ def runstrategy():
         annualReturn = round(compaund_annual_return*100, 2)
         volatility = round(st0[0].analyzers.volatility.get_analysis()['volatility']*100,2)
         sharpe = round(st0[0].analyzers.sharperatio_a.get_analysis()['sharperatio'],2)
-        drawDownPercentage = round(st0[0].analyzers.drawdown.get_analysis()['max']['drawdown'],2)
-        drawDownPeriod = round(st0[0].analyzers.drawdown.get_analysis()['max']['len'] / 25,2)
+        drawDownPercentage = round(st0[0].analyzers.drawdownperyear.get_analysis()['max']['drawdown'],2)
+        drawDownPeriod = round(st0[0].analyzers.drawdownperyear.get_analysis()['max']['len'] / 24,2)
+        drawdownPerYear = st0[0].analyzers.drawdownperyear.get_analysis()['drawDownsPerYear']
 
 
         results_list.append([
@@ -115,8 +128,8 @@ def runstrategy():
             volatility,
             sharpe,
             drawDownPercentage,
-            drawDownPeriod
-
+            drawDownPeriod,
+            drawdownPerYear
         ])
         final_results_list.append(results_list)
 

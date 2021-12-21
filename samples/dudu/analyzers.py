@@ -22,6 +22,8 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import math
+from backtrader.utils.dateintern import num2date
+
 
 from numpy import sqrt
 from backtrader.functions import MultiLogicReduce
@@ -30,7 +32,7 @@ from backtrader.utils.py3 import itervalues
 
 from backtrader import Analyzer, TimeFrame
 from backtrader.mathsupport import average, standarddev
-from backtrader.analyzers import TimeReturn, AnnualReturn
+from backtrader.analyzers import TimeReturn, AnnualReturn,DrawDown
 
 
 class Volatility(Analyzer):
@@ -165,3 +167,32 @@ class Volatility(Analyzer):
         self.rets['volatility'] = volatility
 
 
+class DrawDownPerYear(DrawDown):
+    params = (
+        ('fund', None),
+    )
+
+    def create_analysis(self):
+        super(DrawDownPerYear, self).create_analysis()
+        self.rets.max.drawDownsPerYear = {}
+
+    def start(self):
+        super(DrawDownPerYear, self).start()
+        self.datadate = self.datas[0].datetime 
+
+    def next(self):
+        super(DrawDownPerYear, self).next()
+        r = self.rets
+
+        year = num2date(self.datadate[0]).year
+
+        if r.drawDownsPerYear.get(year) == None:
+            r.drawDownsPerYear[year].len = 0.0
+            r.drawDownsPerYear[year].max.len = 0.0
+            r.drawDownsPerYear[year].max.drawdown = 0.0
+            r.drawDownsPerYear[year].max.moneydown = 0.0
+            
+        r.drawDownsPerYear[year].max.moneydown = max(r.drawDownsPerYear[year].max.moneydown, r.moneydown)
+        r.drawDownsPerYear[year].max.drawdown = max(r.drawDownsPerYear[year].max.drawdown, r.drawdown)
+        r.drawDownsPerYear[year].len = r.drawDownsPerYear[year].len + 1 if r.drawdown else 0
+        r.drawDownsPerYear[year].max.len = max(r.drawDownsPerYear[year].max.len, r.drawDownsPerYear[year].len)
