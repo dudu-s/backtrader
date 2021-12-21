@@ -52,4 +52,4 @@ class TransactionsLoader:
 
 if __name__ == '__main__':
     # For testing purposes only!
-    TransactionsLoader.Load('ICCM.TA')
+    TransactionsLoader().Load('ICCM.TA')

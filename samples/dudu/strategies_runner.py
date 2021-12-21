@@ -7,6 +7,7 @@ import argparse
 import datetime
 
 from os import listdir
+from time import strftime
 
 import numpy as np
 
@@ -15,6 +16,7 @@ from backtrader.analyzers import (AnnualReturn, DrawDown, TimeDrawDown, SharpeRa
                                   TradeAnalyzer, annualreturn)
 
 from analyzers import *
+from GetPrices import *
 from backtrader.analyzers.sharpe import SharpeRatio_A
 from strategies import *
 from commissions import *
@@ -45,6 +47,9 @@ def runstrategy():
 
     final_results_list = []
     strategies_list = [OldStrategy, OldStrategy]
+
+    if args.updatePrices:
+        YahooFinancePricesBuilder().BuildFile(args.symbol, fromdate.strftime("%Y-%m-%d"))
 
     for strat in strategies_list:
         # Need to do something smarter that takes several files
@@ -136,12 +141,13 @@ def parse_args():
                         default=os.path.join(modpath,'../../datas/'),
                         help='data to add to the system')
 
+
     parser.add_argument('--fromdate', '-f',
                         default='2018-05-06',
                         help='Starting date in YYYY-MM-DD format')
 
     parser.add_argument('--todate', '-t',
-                        default='2021-11-30',
+                        default='2021-12-19',
                         help='Starting date in YYYY-MM-DD format')
 
     parser.add_argument('--fast_period', default=13, type=int,
@@ -165,6 +171,9 @@ def parse_args():
                         help='Starting Cash')
 
     parser.add_argument('--plot', '-p', action='store_true',
+                        help='Plot the read data')
+
+    parser.add_argument('--updatePrices', '-u', action='store_true',
                         help='Plot the read data')
 
     parser.add_argument('--numfigs', '-n', default=1,
