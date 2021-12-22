@@ -115,10 +115,19 @@ class OldStrategy(bt.Strategy):
                     self.transactionIndex = self.transactionIndex + 1
 
 
+class ETFFencingStrategy(OldStrategy):
+    params = (('symbol', ''), 
+              ('priceSize', 1),
+              ('TransactionsLoader',TransactionsLoader()))
+
 class TestStrategy(bt.Strategy):
     '''
     Buy when there are two consecutive red bars and sell five bars later
     '''
+    params = (('symbol', ''), 
+              ('priceSize', 1),
+              ('TransactionsLoader',TransactionsLoader()))
+
 
     def log(self, txt, dt=None):
         ''' Logging function for this strategy'''

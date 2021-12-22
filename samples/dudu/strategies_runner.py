@@ -8,6 +8,7 @@ import datetime
 
 from os import listdir
 from time import strftime
+from backtrader.analyzers.transactions import Transactions
 
 import numpy as np
 
@@ -22,31 +23,56 @@ from strategies import *
 from commissions import *
 from strategies_plot import my_heatmap
 
-def printResults(final_results_list):
-    print('Parameter Name\t\t\tOldStrategy\t\tNew Strategy')
-    print('--------------\t\t\t-----------\t\t------------')
-    print('Start Worth\t\t\t%.2F\t\t%.2F'% (final_results_list[0][0][0], final_results_list[1][0][0]) )
-    print('End Worth\t\t\t%.2F\t\t%.2F'% (final_results_list[0][0][1], final_results_list[1][0][1]) )
-    print('PNL\t\t\t\t%.2F\t\t%.2F'% (final_results_list[0][0][2], final_results_list[1][0][2]) )
-    print('Annualised returns\t\t%.2F%%\t\t\t%.2F%%'% (final_results_list[0][0][3], final_results_list[1][0][3]) )
-    print('Annualised volatility\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][4], final_results_list[1][0][4]) )
-    print('Sharpe\t\t\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][5], final_results_list[1][0][5]) )
-    print('Draw Down\t\t\t%.2F%%\t\t\t%.2F%%'% (final_results_list[0][0][6], final_results_list[1][0][6]) )
-    print('Draw Down Period (Days)\t\t%.2F\t\t\t%.2F'% (final_results_list[0][0][7], final_results_list[1][0][7]) )
-    
-    drawdownsStrings = {}
-    drawdownsPeriodStrings = {}
-    for key in (final_results_list[0][0][8]):
-        drawdownsStrings[key] = 'Draw Down %s\t\t\t%.2F%%'% (key,final_results_list[0][0][8][key].max.drawdown)
-        drawdownsPeriodStrings[key] = 'Draw Down Period (Days) %s\t%.2F'% (key,final_results_list[0][0][8][key].max.len/24)
-    
-    for key in (final_results_list[1][0][8]):
-        drawdownsStrings[key] = drawdownsStrings[key] + '\t\t\t%.2F%%'% (final_results_list[1][0][8][key].max.drawdown)
-        drawdownsPeriodStrings[key] = drawdownsPeriodStrings[key] + '\t\t\t%.2F'% (final_results_list[1][0][8][key].max.len/24)
+def printResults(final_results_dict):
 
-    for stringkey in drawdownsStrings:
-        print(drawdownsStrings[stringkey])
-        print(drawdownsPeriodStrings[stringkey])
+    headerKey                       = 'Parameter Name\t\t\t'
+    underlineKey                    = '--------------\t\t\t'
+    startWorthKey                   = 'Start Worth\t\t\t'
+    endWorthKey                     = 'End Worth\t\t\t'
+    pnlKey                          = 'PNL\t\t\t\t'
+    annualizedReturnsKey            = 'Annualised returns\t\t'
+    annualizedVolatilityKey         = 'Annualised volatility\t\t'
+    sharpeKey                       = 'Sharpe\t\t\t\t'
+    drawDownKey                     = 'Draw Down\t\t\t'
+    drawDownPeriodKey               = 'Draw Down Period (Days)\t\t'
+
+    lines = {}
+    lines[headerKey]                = ''
+    lines[underlineKey]             = ''
+    lines[startWorthKey]            = ''
+    lines[endWorthKey]              = ''
+    lines[pnlKey]                   = ''
+    lines[annualizedReturnsKey]     = ''
+    lines[annualizedVolatilityKey]  = ''
+    lines[sharpeKey]                = ''
+    lines[drawDownKey]              = ''
+    lines[drawDownPeriodKey]        = ''
+
+    zeroOnce = False
+    for key in final_results_dict:
+        lines[headerKey]                = lines[headerKey] + key.__name__ + '\t\t'
+        lines[underlineKey]             = lines[underlineKey] + '-----------\t\t'
+        lines[startWorthKey]            = lines[startWorthKey] + '%.2F\t\t'% (final_results_dict[key][0][0])
+        lines[endWorthKey]              = lines[endWorthKey] + '%.2F\t\t'% (final_results_dict[key][0][1])
+        lines[pnlKey]                   = lines[pnlKey] + '%.2F\t\t'% (final_results_dict[key][0][2])
+        lines[annualizedReturnsKey]     = lines[annualizedReturnsKey] + '%.2F\t\t\t'% (final_results_dict[key][0][3])
+        lines[annualizedVolatilityKey]  = lines[annualizedVolatilityKey] + '%.2F\t\t\t'% (final_results_dict[key][0][4])
+        lines[sharpeKey]                = lines[sharpeKey] + '%.2F\t\t\t'% (final_results_dict[key][0][5])
+        lines[drawDownKey]              = lines[drawDownKey] + '%.2F\t\t\t'% (final_results_dict[key][0][6])
+        lines[drawDownPeriodKey]        = lines[drawDownPeriodKey] + '%.2F\t\t\t'% (final_results_dict[key][0][7])
+
+        if not zeroOnce:
+            for yearKey in (final_results_dict[key][0][8]):
+                lines['Draw Down %s\t\t\t'% (yearKey)] = ''
+                lines['Draw Down Period (Days) %s\t'% (yearKey)] = ''
+            zeroOnce = True
+
+        for yearKey in (final_results_dict[key][0][8]):
+            lines['Draw Down %s\t\t\t'% (yearKey)] = lines['Draw Down %s\t\t\t'% (yearKey)] + '%.2F%%\t\t\t'% (final_results_dict[key][0][8][yearKey].max.drawdown)
+            lines['Draw Down Period (Days) %s\t'% (yearKey)] = lines['Draw Down Period (Days) %s\t'% (yearKey)] + '%.2F\t\t\t'% (final_results_dict[key][0][8][yearKey].max.len/24)
+        
+    for key in lines:
+        print(key+lines[key])
 
 def runstrategy():
     args = parse_args()
@@ -58,8 +84,8 @@ def runstrategy():
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
     datapath = os.path.join(modpath, args.data + args.symbol + '.csv')
 
-    final_results_list = []
-    strategies_list = [OldStrategy, OldStrategy]
+    final_results_dict = {}
+    strategies_list = [OldStrategy, ETFFencingStrategy]
 
     if args.updatePrices:
         YahooFinancePricesBuilder().BuildFile(args.symbol, fromdate.strftime("%Y-%m-%d"))
@@ -100,7 +126,8 @@ def runstrategy():
         cerebro.addanalyzer(TimeReturn, _name='time_return', timeframe=tframes[args.tframe])
         cerebro.addanalyzer(SharpeRatio_A, timeframe=tframes[args.tframe], stddev_sample=True)
         cerebro.addanalyzer(Volatility)
-        #cerebro.addanalyzer(TradeAnalyzer)
+        cerebro.addanalyzer(TradeAnalyzer)
+        cerebro.addanalyzer(Transactions)
         cerebro.addanalyzer(DrawDownPerYear)
         
         st0 = cerebro.run()
@@ -111,7 +138,10 @@ def runstrategy():
         startWorth = args.cash
         endWorth = round(st0[0].broker.get_value(), 2)
         PnL = round(st0[0].broker.get_value() - args.cash, 2)
-        compaund_annual_return = np.power(endWorth / startWorth, 1 / loader.Years())-1
+        transactionsList = list(st0[0].analyzers.transactions.get_analysis())
+        years = (transactionsList[-1] - transactionsList[0]).days / 365.25
+
+        compaund_annual_return = np.power(endWorth / startWorth, 1 / years)-1
         annualReturn = round(compaund_annual_return*100, 2)
         volatility = round(st0[0].analyzers.volatility.get_analysis()['volatility']*100,2)
         sharpe = round(st0[0].analyzers.sharperatio_a.get_analysis()['sharperatio'],2)
@@ -131,15 +161,15 @@ def runstrategy():
             drawDownPeriod,
             drawdownPerYear
         ])
-        final_results_list.append(results_list)
+        final_results_dict[strat] = results_list
 
     # Average results for the different data feeds
-    arr = np.array(final_results_list)
-    #final_results_list = [[int(val) if val.is_integer() else round(val, 2) for val in i] for i in arr.mean(0)]
+    #arr = np.array(final_results_dict)
+    #final_results_dict = [[int(val) if val.is_integer() else round(val, 2) for val in i] for i in arr.mean(0)]
 
-    printResults(final_results_list)
+    printResults(final_results_dict)
     if args.plot:
-        my_heatmap(final_results_list)
+        my_heatmap(final_results_dict)
 
 
 def parse_args():
