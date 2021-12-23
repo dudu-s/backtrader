@@ -3,7 +3,7 @@ import datetime
 
 import backtrader as bt
 import backtrader.indicators as btind
-from backtrader.order import Order
+from backtrader.order import BuyOrder, Order, SellOrder
 from transactionsLoader import *
 
 
@@ -15,8 +15,7 @@ class OldStrategy(bt.Strategy):
     Current transactions based on our history log
     '''
     params = (('symbol', ''), 
-              ('priceSize', 1),
-              ('TransactionsLoader',TransactionsLoader()))
+              ('priceSize', 1))
     
 
     def findTransaction(self, transactionDate, transactionIndex):
@@ -38,18 +37,19 @@ class OldStrategy(bt.Strategy):
         self.datadate = self.datas[0].datetime 
         self.transactionIndex=0
         
-        self.pastTransactions = self.p.TransactionsLoader.Load(self.p.symbol)
+        self.pastTransactions = TransactionsLoader().Load(self.p.symbol)
         
 
         # Keep track of pending orders
-        self.order = None
+        self.order = {}
         self.buyprice = None
         self.buycomm = None
-
+   
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
             # Buy/Sell order submitted/accepted to/by broker - Nothing to do
             return
+
 
         # Check if an order has been completed
         # Attention: broker could reject order if not enough cash
@@ -74,7 +74,7 @@ class OldStrategy(bt.Strategy):
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log('Order Canceled/Margin/Rejected')
 
-        self.order = None
+        self.order[order.p.data] = None
 
     def notify_trade(self, trade):
         if not trade.isclosed:
@@ -85,8 +85,7 @@ class OldStrategy(bt.Strategy):
 
     def next(self):
 
-        if self.order:
-            return
+        
         
         #if not self.position:
         trans = self.findTransaction(self.datadate[0], self.transactionIndex)
@@ -94,56 +93,53 @@ class OldStrategy(bt.Strategy):
         # Not yet in the market... we MIGHT BUY if...
         if trans:
             if trans.transactionType == 'buy':
+                if self.datas[0] in self.order and self.order[self.datas[0]]:
+                    return
+
                 self.log('BUY CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
                          (trans.price * self.p.priceSize,
                           trans.amount,
                           trans.price * self.p.priceSize * trans.amount))
-                self.order = self.buy(exectype=Order.Limit,price=trans.price,size=trans.amount)
+                order = self.buy(exectype=Order.Limit,price=trans.price,size=trans.amount, data=self.datas[0])
+                self.order[self.datas[0]] = order
                 self.transactionIndex = self.transactionIndex + 1
 
         if self.position:
             # Already in the market... we might sell
             if trans:
                 if trans.transactionType == 'sell':
+
+                    if self.order[self.datas[0]]:
+                        return
+
                     self.log('SELL CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
                              (trans.price * self.p.priceSize,
                               trans.amount, 
                               trans.price * self.p.priceSize * trans.amount))
 
                     # Keep track of the created order to avoid a 2nd order
-                    self.order = self.sell(exectype=Order.Limit,price=trans.price,size=trans.amount)
+                    self.order[self.datas[0]] = self.sell(exectype=Order.Limit,price=trans.price,size=trans.amount)
                     self.transactionIndex = self.transactionIndex + 1
 
 
-class ETFFencingStrategy(OldStrategy):
-    params = (('symbol', ''), 
-              ('priceSize', 1),
-              ('TransactionsLoader',TransactionsLoader()))
-
-class TestStrategy(bt.Strategy):
+class OldStrategyWithETFFencing(OldStrategy):
     '''
-    Buy when there are two consecutive red bars and sell five bars later
+    Involve fencing with the trade
     '''
     params = (('symbol', ''), 
-              ('priceSize', 1),
-              ('TransactionsLoader',TransactionsLoader()))
-
-
-    def log(self, txt, dt=None):
-        ''' Logging function for this strategy'''
-        dt = dt or self.datas[0].datetime.date(0)
-        print('%s, %s' % (dt.isoformat(), txt))
-
+              ('priceSize', 1))
+    
     def __init__(self):
-        # Keep a reference to the "close" line in the data[0] dataseries
-        self.dataclose = self.datas[0].close
-
-        # Keep track of pending orders
-        self.order = None
-        self.buyprice = None
-        self.buycomm = None
+        super(OldStrategyWithETFFencing,self).__init__()
+        self.fencingData = self.datas[1]
+        self.order[self.fencingData] = None
 
     def notify_order(self, order):
+        
+        if self.fencingData != order.p.data:
+            super(OldStrategyWithETFFencing,self).notify_order(order)
+            return
+
         if order.status in [order.Submitted, order.Accepted]:
             # Buy/Sell order submitted/accepted to/by broker - Nothing to do
             return
@@ -152,190 +148,86 @@ class TestStrategy(bt.Strategy):
         # Attention: broker could reject order if not enough cash
         if order.status in [order.Completed]:
             if order.isbuy():
-                self.log('BUY EXECUTED, Price: %.2f, Cost: %.2f, Commission: %.2f' %
-                         (order.executed.price,
-                          order.executed.value,
+                self.log('BUY EXECUTED, Price: %.2f, Amount: %.2F, Cost: %.2f, Commission: %.2f' %
+                         (order.executed.price*self.p.priceSize,
+                          order.executed.size,
+                          order.executed.value*self.p.priceSize,
                           order.executed.comm))
                 self.buyprice = order.executed.price
                 self.buycomm = order.executed.comm
             elif order.issell():
-                self.log('SELL EXECUTED, Price: %.2f, Cost: %.2f, Commission: %.2f' %
-                         (order.executed.price,
-                          order.executed.value,
+                self.log('SHORT SELL EXECUTED, Price: %.2f, Amount: %.2F, Cost: %.2f, Commission: %.2f' %
+                         (order.executed.price*self.p.priceSize,
+                          order.executed.size,
+                          order.executed.value*self.p.priceSize,
                           order.executed.comm))
 
-            self.bar_executed = len(self)
+            #self.bar_executed = len(self)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log('Order Canceled/Margin/Rejected')
 
-        self.order = None
+        self.order[order.p.data] = None
+        
+
+    def GetNextOrder(self):
+        for data in self.order.keys():
+            if not self.order[data] is None and data != self.fencingData:
+                return self.order[data]
+        return None
 
     def notify_trade(self, trade):
         if not trade.isclosed:
             return
 
-        self.log('OPERATION PROFIT, GROSS %.2f, NET %.2f' %
-                 (trade.pnl, trade.pnlcomm))
-
-    def next(self):
-
-        if self.order:
-            return
-
-        if not self.position:
-            # Not yet in the market... we MIGHT BUY if...
-            if self.dataclose[0] < self.dataclose[-1]:
-                if self.dataclose[-1] < self.dataclose[-2]:
-                    self.log('BUY CREATE, %.2f' % self.dataclose[0])
-                    self.order = self.buy()
+        if trade.data == self.fencingData:
+            self.log('SHORT OPERATION PROFIT, GROSS %.2f, NET %.2f' %
+                     (trade.pnl*self.p.priceSize, trade.pnlcomm))
         else:
+            self.log('OPERATION PROFIT, GROSS %.2f, NET %.2f' %
+                     (trade.pnl*self.p.priceSize, trade.pnlcomm))
+
+    def next(self):
+
+        super(OldStrategyWithETFFencing,self).next()
+        
+        if all(value == None for value in self.order.values()):
+            return
+                
+        order = self.GetNextOrder()
+        if order is None or not self.order[self.fencingData] is None:
+            return
+
+        
+
+        # Not yet in the market... we MIGHT BUY if...
+        if order.isbuy():
+            price = self.fencingData[0]
+            orderValue = order.p.size * order.p.price
+            amount = int(orderValue / price)
+
+            self.log('SHORT SELL CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
+                        (price * self.p.priceSize,
+                        amount,
+                        orderValue))
+
+            
+
+            self.order[self.fencingData] = self.sell(data=self.fencingData, exectype=Order.Limit, 
+                                                price=price, size = amount)
+
+        if order.issell():
             # Already in the market... we might sell
-            if len(self) >= (self.bar_executed + 5):
-                self.log('SELL CREATE, %.2f' % self.dataclose[0])
+            price = self.fencingData[0]
+            orderValue = order.p.size * order.p.price
+            amount = int(orderValue / price)
 
-                # Keep track of the created order to avoid a 2nd order
-                self.order = self.sell()
+            self.log('CLOSE SHORT CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
+                        (price * self.p.priceSize,
+                        amount,
+                        orderValue))
 
-
-class SMAcrossover(bt.Strategy):
-    params = (('fast', 20), ('slow', 50),)
-
-    def log(self, txt, dt=None):
-        dt = dt or self.datas[0].datetime.date(0)
-        #print(f'{dt.isoformat()} {txt}') # Comment this line when running optimization
-
-    def __init__(self):
-        self.dataclose = self.datas[0].close
-        self.order = None
-
-        fast_sma, slow_sma = bt.ind.SMA(period=self.p.fast), bt.ind.SMA(period=self.p.slow)
-        self.crossover = bt.indicators.CrossOver(fast_sma, slow_sma)
-        #self.signal_add(bt.SIGNAL_LONGSHORT, bt.ind.CrossOver(sma1, sma2))
-
-    def notify_trade(self, trade):
-        if not trade.isclosed:
-            return
-
-        self.log(f'GROSS {trade.pnl:.2f}, NET {trade.pnlcomm:.2f}')
-
-    def notify_order(self, order):
-        if order.status in [order.Submitted, order.Accepted]:
-            # An active Buy/Sell order has been submitted/accepted - Nothing to do
-            return
-
-        # Check if an order has been completed
-        # Attention: broker could reject order if not enough cash
-        if order.status in [order.Completed]:
-            if order.isbuy():
-                self.log(f'BUY EXECUTED, {order.executed.price:.2f}')
-            elif order.issell():
-                self.log(f'SELL EXECUTED, {order.executed.price:.2f}')
-            self.bar_executed = len(self)
-
-        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log('Order Canceled/Margin/Rejected')
-
-        # Reset orders
-        self.order = None
-
-    def next(self):
-        # Check for open orders
-        if self.order:
-            return
-
-        if self.crossover > 0:
-            self.log(f'BUY CREATE {self.dataclose[0]:.2f}')
-            self.order = self.buy()
-        elif self.crossover < 0:
-            self.log(f'SELL CREATE {self.dataclose[0]:.2f}')
-            self.order = self.sell()
-
-
-class EmaCrossLongShort(bt.Strategy):
-    '''This strategy buys/sells upong the close price crossing
-    upwards/downwards an Exponential Moving Average.
-    It can be a long-only strategy by setting the param "longonly" to True
-    '''
-    params = dict(
-        fast=13,
-        slow=48,
-        printout=True,
-        longonly=False,
-    )
-
-    def log(self, txt, dt=None):
-        if self.p.printout:
-            dt = dt or self.data.datetime[0]
-            dt = bt.num2date(dt)
-            print(f'{dt.isoformat()}, {txt}')
-
-    def __init__(self):
-        self.orderid = None  # to control operation entries
-
-        fast_ema, slow_ema = btind.MovAv.EMA(period=self.p.fast), btind.MovAv.EMA(period=self.p.slow)
-        self.signal = btind.CrossOver(fast_ema, slow_ema)
-        self.log(f'Initial portfolio value of {self.broker.get_value():.2f}\n')
-
-    def start(self):
-        pass
-
-    def next(self):
-        if self.orderid:
-            return  # if an order is active, no new orders are allowed
-
-        if self.signal > 0.0:  # cross upwards
-            if self.position:
-                self.log(f'CLOSE SHORT position of {abs(self.position.size)} shares '
-                         f'at {self.data.close[0]:.2f}')
-                self.close()
-
-            self.log(f'BUY {self.getsizing()} shares at {self.data.close[0]}')
-            self.buy()
-
-        elif self.signal < 0.0:
-            if self.position:
-                self.log(f'CLOSE LONG position of {self.position.size} shares '
-                         f'at {self.data.close[0]:.2f}')
-                self.close()
-
-            if not self.p.longonly:
-                self.log(f'SELL {abs(self.getsizing())} shares at '
-                         f'{self.data.close[0]}')
-                self.sell()
-
-    def notify_order(self, order):
-        if order.status in [bt.Order.Submitted, bt.Order.Accepted]:
-            return  # Await further notifications
-
-        if order.status == order.Completed:
-            if order.isbuy():
-                buytxt = f'BUY COMPLETED. ' \
-                         f'Size: {order.executed.size}, ' \
-                         f'Price: {order.executed.price:.2f}, ' \
-                         f'Commission: {order.executed.comm:.2f}'
-                self.log(buytxt, order.executed.dt)
-            else:
-                selltxt = 'SELL COMPLETED. ' \
-                         f'Size: {abs(order.executed.size)}, ' \
-                         f'Price: {order.executed.price:.2f}, ' \
-                         f'Commission: {order.executed.comm:.2f}'
-                self.log(selltxt, order.executed.dt)
-
-        elif order.status in [order.Expired, order.Canceled, order.Margin]:
-            self.log(f'{order.Status[order.status]}')
-            pass  # Simply log
-
-        # Allow new orders
-        self.orderid = None
-
-    def notify_trade(self, trade):
-        if trade.isclosed:
-            self.log(f'TRADE COMPLETED, '
-                     f'Portfolio: {self.broker.get_value():.2f}, '
-                     f'Gross: {trade.pnl:.2f}, '
-                     f'Net: {trade.pnlcomm:.2f}')
-
-        elif trade.justopened:
-            #self.log('TRADE OPENED, SIZE %2d' % trade.size)
-            pass
+            self.order[self.fencingData] = self.buy(data=self.fencingData, exectype=Order.Limit, 
+                                                price=price, size = amount)
+  
+#SMAcrossover, EmaCrossLongShort

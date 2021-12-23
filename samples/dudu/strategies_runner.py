@@ -83,9 +83,11 @@ def runstrategy():
 
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
     datapath = os.path.join(modpath, args.data + args.symbol + '.csv')
+    fencingpath = os.path.join(modpath, args.data + 'XBI' + '.csv')
 
     final_results_dict = {}
-    strategies_list = [OldStrategy, ETFFencingStrategy]
+    strategies_list = [OldStrategy, OldStrategyWithETFFencing]
+    #strategies_list = [OldStrategyWithETFFencing]
 
     if args.updatePrices:
         YahooFinancePricesBuilder().BuildFile(args.symbol, fromdate.strftime("%Y-%m-%d"))
@@ -99,12 +101,20 @@ def runstrategy():
             todate=todate,
             tframes=bt.TimeFrame.Minutes
         )
-        loader = TransactionsLoader()
+
+        fencingData = bt.feeds.YahooFinanceCSVData(
+            dataname=fencingpath,
+            fromdate=fromdate,
+            todate=todate,
+            tframes=bt.TimeFrame.Minutes
+        )
+
         cerebro = bt.Cerebro(optreturn=False)
 
         # Need to handle several datas together
         cerebro.adddata(data, name='MyData0')
-        cerebro.addstrategy(strat, symbol=args.symbol, priceSize=1, TransactionsLoader=loader)
+        cerebro.adddata(fencingData, name='MyData1')
+        cerebro.addstrategy(strat, symbol=args.symbol, priceSize=1)
 
         results_list = []
 
@@ -168,9 +178,10 @@ def runstrategy():
     #final_results_dict = [[int(val) if val.is_integer() else round(val, 2) for val in i] for i in arr.mean(0)]
 
     printResults(final_results_dict)
-    if args.plot:
-        my_heatmap(final_results_dict)
 
+    if args.plot:
+            cerebro.plot()
+  
 
 def parse_args():
     parser = argparse.ArgumentParser(description='TimeReturn')
@@ -213,7 +224,7 @@ def parse_args():
     parser.add_argument('--cash', default=100000, type=int,
                         help='Starting Cash')
 
-    parser.add_argument('--plot', '-p', action='store_true',
+    parser.add_argument('--plot', '-p', action='store_false',
                         help='Plot the read data')
 
     parser.add_argument('--updatePrices', '-u', action='store_true',

@@ -85,5 +85,5 @@ if __name__ == '__main__':
     #tickerStrings = ['ICCM.TA']
 
     # For testing purposes only!
-    YahooFinancePricesBuilder().BuildFile('ICCM.TA',datetime.datetime.strptime('2016-01-01', '%Y-%m-%d'))
+    YahooFinancePricesBuilder().BuildFile('XBI',datetime.datetime.strptime('2016-01-01', '%Y-%m-%d'))
     #YahooFinancePricesBuilder.GetFileLastDate('c:/prices/ICCM.TA.csv')
