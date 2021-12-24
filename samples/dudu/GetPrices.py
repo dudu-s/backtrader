@@ -29,7 +29,7 @@ class YahooFinancePricesBuilder:
 
     def BuildFile(self, ticker, startDate, multiplier=1.0):
 
-        filePath = 'C:/PythonScripts/Projects/BackTrader/datas/' + ticker + '.csv'
+        filePath = 'C:/PythonScripts/Projects/BackTrader/Prices/' + ticker + '.csv'
         lastActiveDate = self.GetFileLastDate(filePath)
         if lastActiveDate != None: 
             startDate = datetime.datetime.strptime(lastActiveDate,'%Y-%m-%d') + datetime.timedelta(days = 1)
@@ -41,7 +41,7 @@ class YahooFinancePricesBuilder:
         df_list.clear()
 
         if ticker.find(".TA") > -1:
-            multiplier = multiplier * 0.01
+            multiplier = multiplier * 0.01 / 3.1
     
         try:
 
@@ -85,5 +85,5 @@ if __name__ == '__main__':
     #tickerStrings = ['ICCM.TA']
 
     # For testing purposes only!
-    YahooFinancePricesBuilder().BuildFile('XBI',datetime.datetime.strptime('2016-01-01', '%Y-%m-%d'))
+    YahooFinancePricesBuilder().BuildFile('ICCM.TA',datetime.datetime.strptime('2016-01-01', '%Y-%m-%d'))
     #YahooFinancePricesBuilder.GetFileLastDate('c:/prices/ICCM.TA.csv')

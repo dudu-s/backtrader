@@ -74,6 +74,32 @@ def printResults(final_results_dict):
     for key in lines:
         print(key+lines[key])
 
+def loadSymbols(updatePrices, fromdate):
+    '''
+    yahooTickerStrings = ['DNA', 'ENTX', 'EDIT', 'CLGN', 'EYES', 'EXAS', 'MITC', 'MDWD', 'CHEK', 
+				'AQB','RCEL', 'NNOX','ENLV','ASML', 'ALCRB.PA', 'NXFR.TA', 'MTLF.TA', 'BMLK.TA', 
+				'NXGN.TA', 'PHGE.TA',  'ICCM.TA', 'CRTX', 'SPCE', 'SEDG', 'APLP.TA', 'AQUA.TA', 'PLX.TA', 'ENLT.TA', 'ECPA.TA', 'FVRR', 'SLGN.TA', 'UAL',  'PHGE', 'BVXV',
+                'MMM','ATVI','GOOG','AMZN','AAPL','AVH.AX','BRK-B','BYND','CHKP','CTMX','EA','EQIX','FB','GE','GILD','GSK','INTC','LGND',
+                'MU','NFLX','QCOM','RWLK','SGMO','TTWO','TSLA','TEVA','UPS','URGN','ENLV.TA','TEVA.TA','PSTI.TA']
+    '''
+    yahooTickerStrings = ['ICCM.TA']
+    otherTickerStrings = []#['SRNG', 'MLNX', 'GHDX', 'JUNO', 'KITE', 'NTGN', 'ORBK']
+
+    if updatePrices:
+        for ticker in yahooTickerStrings:
+            YahooFinancePricesBuilder().BuildFile(ticker, fromdate.strftime("%Y-%m-%d"))
+
+    symbolDataIndexes = {}
+    i=0
+    for ticker in yahooTickerStrings:
+        symbolDataIndexes[i] = ticker
+        i = i+1
+
+    for ticker in otherTickerStrings:
+        symbolDataIndexes[i] = ticker
+        i = i+1
+    return symbolDataIndexes
+
 def runstrategy():
     args = parse_args()
 
@@ -82,25 +108,27 @@ def runstrategy():
     todate = datetime.datetime.strptime(args.todate, '%Y-%m-%d')
 
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    datapath = os.path.join(modpath, args.data + args.symbol + '.csv')
-    fencingpath = os.path.join(modpath, args.data + 'XBI' + '.csv')
+    fencingpath = os.path.join(modpath, args.data + 'fencing_XBI' + '.csv')
 
     final_results_dict = {}
-    strategies_list = [OldStrategy, OldStrategyWithETFFencing]
+    strategies_list = [OldStrategy]
     #strategies_list = [OldStrategyWithETFFencing]
 
-    if args.updatePrices:
-        YahooFinancePricesBuilder().BuildFile(args.symbol, fromdate.strftime("%Y-%m-%d"))
+    symbolDataIndexes = loadSymbols(args.updatePrices, fromdate)
 
     for strat in strategies_list:
-        # Need to do something smarter that takes several files
-        #path = os.path.join(datapath, f'{file}')
-        data = bt.feeds.YahooFinanceCSVData(
-            dataname=datapath,
-            fromdate=fromdate,
-            todate=todate,
-            tframes=bt.TimeFrame.Minutes
-        )
+        
+        cerebro = bt.Cerebro(optreturn=False)
+
+        for index in symbolDataIndexes:
+            datapath = os.path.join(modpath, args.data + symbolDataIndexes[index] + '.csv')
+            data = bt.feeds.YahooFinanceCSVData(
+                dataname=datapath,
+                fromdate=fromdate,
+                todate=todate,
+                tframes=bt.TimeFrame.Minutes
+            )
+            cerebro.adddata(data, name=symbolDataIndexes[index])
 
         fencingData = bt.feeds.YahooFinanceCSVData(
             dataname=fencingpath,
@@ -109,12 +137,10 @@ def runstrategy():
             tframes=bt.TimeFrame.Minutes
         )
 
-        cerebro = bt.Cerebro(optreturn=False)
+        
 
-        # Need to handle several datas together
-        cerebro.adddata(data, name='MyData0')
-        cerebro.adddata(fencingData, name='MyData1')
-        cerebro.addstrategy(strat, symbol=args.symbol, priceSize=1)
+        cerebro.adddata(fencingData, name='Fencing')
+        cerebro.addstrategy(strat, symbol=args.symbol, priceSize=1, symbolsMapper=symbolDataIndexes)
 
         results_list = []
 
@@ -192,7 +218,7 @@ def parse_args():
                         help='specific symbol to add to the system')
 
     parser.add_argument('--data', '-d',
-                        default=os.path.join(modpath,'../../datas/'),
+                        default=os.path.join(modpath,'../../prices/'),
                         help='data to add to the system')
 
 
