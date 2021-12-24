@@ -221,7 +221,7 @@ def parse_args():
     group.add_argument('--legacyannual', action='store_true',
                        help='Use legacy annual return analyzer')
 
-    parser.add_argument('--cash', default=100000, type=int,
+    parser.add_argument('--cash', default=100000 / 3.1, type=int,
                         help='Starting Cash')
 
     parser.add_argument('--plot', '-p', action='store_false',
