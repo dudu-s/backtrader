@@ -1,13 +1,9 @@
 from datetime import date
-import datetime
+import math
 
 import backtrader as bt
-import backtrader.indicators as btind
-from backtrader.order import BuyOrder, Order, SellOrder
+from backtrader.order import Order
 from transactionsLoader import *
-
-
-
 
 
 class OldStrategy(bt.Strategy):
@@ -18,19 +14,17 @@ class OldStrategy(bt.Strategy):
               ('priceSize', 1),
               ('symbolsMapper',{}))
     
-
-    def findTransaction(self, metaData, transactionDate):
+    def findTransactions(self, metaData, transactionDate):
         
-        #for trans in self.pastTransactions:
-        trans = metaData['transactions'][metaData['transactionIndex']]
-        if int(transactionDate) == bt.date2num(trans.transactionDate):
-            return trans
-        return None
+        res = [trans for trans in metaData['transactions'][metaData['transactionIndex']:] if int(transactionDate) == bt.date2num(trans.transactionDate)]
+        return res
+        
 
-    def log(self, txt, dt=None):
-        ''' Logging function for this strategy'''
-        dt = dt or self.datas[0].datetime.date(0)
-        print('%s, %s' % (dt.isoformat(), txt))
+    def log(self, txt, force=False, dt=None):
+        #if force==True:
+            ''' Logging function for this strategy'''
+            dt = dt or self.datas[0].datetime.date(0)
+            print('%s, %s' % (dt.isoformat(), txt))
 
     def __init__(self):
         # Keep a reference to the "close" line in the data[0] dataseries
@@ -49,8 +43,25 @@ class OldStrategy(bt.Strategy):
         self.order = {}
         self.buyprice = None
         self.buycomm = None
-   
+        self.cash_addition = 0
+
+
+        # Indicators for the plotting show
+        #bt.indicators.PercentChange(self.datas[0], period = 3)
+        #bt.indicators.StochasticSlow(self.datas[0])
+        #bt.indicators.MACDHisto(self.datas[0])
+        #rsi = bt.indicators.RSI(self.datas[0], period=3)
+        #bt.indicators.SmoothedMovingAverage(rsi, period=3)
+        #bt.indicators.ATR(self.datas[0], plot=False,period=3)
+    
+    '''
+    def notify_fund(self, cash, value, fundvalue, shares):
+        self.log('%.4f,%.4F,%.4f,%.4f' %
+                    (cash, value, fundvalue, shares), True)
+    '''
+
     def notify_order(self, order):
+        
         if order.status in [order.Submitted, order.Accepted]:
             # Buy/Sell order submitted/accepted to/by broker - Nothing to do
             return
@@ -88,47 +99,77 @@ class OldStrategy(bt.Strategy):
         self.log('OPERATION PROFIT, GROSS %.2f, NET %.2f' %
                  (trade.pnl*self.p.priceSize, trade.pnlcomm))
 
+    
     def next(self):
 
-        
-        
-        #if not self.position:
+        if self.addCashForAllBuys():
+            return
+
         for metaDataIndex in self.pastTransactions:
             metaData = self.pastTransactions[metaDataIndex]
             currentData = metaData['data']
-            trans = self.findTransaction(metaData, self.datadate[0])
+            res = self.findTransactions(metaData, self.datadate[0])
+            
+            for trans in res:
+
+                # Not yet in the market... we MIGHT BUY if...
+                if trans:
+                    if trans.transactionType == 'buy':
+                        self.log('BUY CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
+                                 (trans.price * self.p.priceSize,
+                                  trans.amount,
+                                  trans.price * self.p.priceSize * trans.amount))
+                        order = self.buy(exectype=Order.Limit,price=trans.price,size=trans.amount, data=currentData)
+                        self.order[currentData] = order
+                        metaData['transactionIndex'] = metaData['transactionIndex'] + 1
+                
+                if self.position:
+                    # Already in the market... we might sell
+                    if trans:
+                        if trans.transactionType == 'sell':
+
+                            self.log('SELL CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
+                                     (trans.price * self.p.priceSize,
+                                      trans.amount, 
+                                      trans.price * self.p.priceSize * trans.amount))
+
+                            # Keep track of the created order to avoid a 2nd order
+                            self.order[currentData] = self.sell(exectype=Order.Limit,price=trans.price,size=trans.amount)
+                            metaData['transactionIndex'] = metaData['transactionIndex'] + 1
+        
+
+        if len(self.data) == self.data.buflen():
+            self.close(data=self.datas[0])
+        
+    def addCashForAllBuys(self):
+        additionalcash = 0
+        pendingOrders = 0
+        for metaDataIndex in self.pastTransactions:
+            metaData = self.pastTransactions[metaDataIndex]
+            res = self.findTransactions(metaData, self.datadate[0])
+            
+            for trans in res:
+
+                # Not yet in the market... we MIGHT BUY if...
+                if trans:
+                    if trans.transactionType == 'buy':
+                        pendingOrders = pendingOrders + (trans.price * trans.amount)
+                        
+        
+        additionalcash = self.getNeededCash(pendingOrders)
+        if  additionalcash > 0:
+            self.addCash(additionalcash)
+            return True
+        return False
+        
+    def addCash(self, cost): 
+        self.broker.add_cash(cost)
+        self.cash_addition = self.cash_addition + cost
+        self.log('%.2f' % (cost), False)
             
 
-            # Not yet in the market... we MIGHT BUY if...
-            if trans:
-                if trans.transactionType == 'buy':
-                    if currentData in self.order and self.order[currentData]:
-                        continue
-
-                    self.log('BUY CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
-                             (trans.price * self.p.priceSize,
-                              trans.amount,
-                              trans.price * self.p.priceSize * trans.amount))
-                    order = self.buy(exectype=Order.Limit,price=trans.price,size=trans.amount, data=currentData)
-                    self.order[currentData] = order
-                    metaData['transactionIndex'] = metaData['transactionIndex'] + 1
-
-            if self.position:
-                # Already in the market... we might sell
-                if trans:
-                    if trans.transactionType == 'sell':
-
-                        if self.order[currentData]:
-                            continue
-
-                        self.log('SELL CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
-                                 (trans.price * self.p.priceSize,
-                                  trans.amount, 
-                                  trans.price * self.p.priceSize * trans.amount))
-
-                        # Keep track of the created order to avoid a 2nd order
-                        self.order[currentData] = self.sell(exectype=Order.Limit,price=trans.price,size=trans.amount)
-                        metaData['transactionIndex'] = metaData['transactionIndex'] + 1
+    def getNeededCash(self, cost): 
+        return max(0, math.ceil(cost - self.broker.get_cash()))
 
 
 class OldStrategyWithETFFencing(OldStrategy):

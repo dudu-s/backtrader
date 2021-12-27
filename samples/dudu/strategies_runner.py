@@ -6,8 +6,6 @@ import sys
 import argparse
 import datetime
 
-from os import listdir
-from time import strftime
 from backtrader.analyzers.transactions import Transactions
 
 import numpy as np
@@ -108,7 +106,7 @@ def runstrategy():
     todate = datetime.datetime.strptime(args.todate, '%Y-%m-%d')
 
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    fencingpath = os.path.join(modpath, args.data + 'fencing_XBI' + '.csv')
+    fencingpath = os.path.join(modpath, args.data + 'XBI' + '.csv')
 
     final_results_dict = {}
     strategies_list = [OldStrategy]
@@ -126,7 +124,6 @@ def runstrategy():
                 dataname=datapath,
                 fromdate=fromdate,
                 todate=todate,
-                tframes=bt.TimeFrame.Minutes
             )
             cerebro.adddata(data, name=symbolDataIndexes[index])
 
@@ -134,10 +131,7 @@ def runstrategy():
             dataname=fencingpath,
             fromdate=fromdate,
             todate=todate,
-            tframes=bt.TimeFrame.Minutes
         )
-
-        
 
         cerebro.adddata(fencingData, name='Fencing')
         cerebro.addstrategy(strat, symbol=args.symbol, priceSize=1, symbolsMapper=symbolDataIndexes)
@@ -145,7 +139,6 @@ def runstrategy():
         results_list = []
 
         cerebro.broker.set_coc(True)
-        # Need to set smarter the cash
         cerebro.broker.setcash(args.cash)
         #cerebro.addsizer(MaxRiskSizer)
         comminfo = PoalimCommission()
@@ -158,18 +151,24 @@ def runstrategy():
             years=bt.TimeFrame.Years)
 
         # Add the Analyzers
-        cerebro.addanalyzer(SQN)
+        #cerebro.addanalyzer(SQN)
         cerebro.addanalyzer(TimeReturn, _name='time_return', timeframe=tframes[args.tframe])
         cerebro.addanalyzer(SharpeRatio_A, timeframe=tframes[args.tframe], stddev_sample=True)
         cerebro.addanalyzer(Volatility)
-        cerebro.addanalyzer(TradeAnalyzer)
         cerebro.addanalyzer(Transactions)
+        cerebro.addanalyzer(TradeAnalyzer)
         cerebro.addanalyzer(DrawDownPerYear)
+
+        cerebro.broker.set_fundmode(True)
+
+        cerebro.addobserver(bt.observers.FundValue)
+        cerebro.addobserver(bt.observers.FundShares)
         
         st0 = cerebro.run()
         
         my_dict = st0[0].analyzers.time_return.get_analysis()
-        annual_returns = [v for _, v in my_dict.items()]
+        annual_returns = [v+1 for _, v in my_dict.items()]
+        annualReturn = math.prod(annual_returns)
         
         startWorth = args.cash
         endWorth = round(st0[0].broker.get_value(), 2)
@@ -177,7 +176,7 @@ def runstrategy():
         transactionsList = list(st0[0].analyzers.transactions.get_analysis())
         years = (transactionsList[-1] - transactionsList[0]).days / 365.25
 
-        compaund_annual_return = np.power(endWorth / startWorth, 1 / years)-1
+        compaund_annual_return = np.power(annualReturn, 1 / years)-1
         annualReturn = round(compaund_annual_return*100, 2)
         volatility = round(st0[0].analyzers.volatility.get_analysis()['volatility']*100,2)
         sharpe = round(st0[0].analyzers.sharperatio_a.get_analysis()['sharperatio'],2)
@@ -222,12 +221,10 @@ def parse_args():
                         help='data to add to the system')
 
 
-    parser.add_argument('--fromdate', '-f',
-                        default='2018-05-06',
+    parser.add_argument('--fromdate', '-f', default='2018-05-06',
                         help='Starting date in YYYY-MM-DD format')
 
-    parser.add_argument('--todate', '-t',
-                        default='2021-12-19',
+    parser.add_argument('--todate', '-t', default='2021-12-19',
                         help='Starting date in YYYY-MM-DD format')
 
     parser.add_argument('--fast_period', default=13, type=int,
@@ -247,8 +244,12 @@ def parse_args():
     group.add_argument('--legacyannual', action='store_true',
                        help='Use legacy annual return analyzer')
 
-    parser.add_argument('--cash', default=100000 / 3.1, type=int,
+    #parser.add_argument('--cash', default=100000 / 3.1, type=int,
+    #                    help='Starting Cash')
+
+    parser.add_argument('--cash', default=1000, type=int,
                         help='Starting Cash')
+
 
     parser.add_argument('--plot', '-p', action='store_false',
                         help='Plot the read data')

@@ -1,4 +1,4 @@
-from time import strptime
+from time import strftime, strptime
 import yfinance as yf
 import sys
 import datetime
@@ -42,7 +42,9 @@ class YahooFinancePricesBuilder:
 
         if ticker.find(".TA") > -1:
             multiplier = multiplier * 0.01 / 3.1
-    
+        
+        rowsperday = 3
+        
         try:
 
             data = yf.download(ticker, group_by="Ticker", start=startDate, end=datetime.datetime.now().strftime("%Y-%m-%d"), interval="1d")
@@ -56,9 +58,9 @@ class YahooFinancePricesBuilder:
                 
                     for dataIndex in range(0,len(dataFrame['Open'])-1):
                         startTime = dataFrame['Open'].index[dataIndex] + datetime.timedelta(hours = 9)
-                        for minute in range(1,25):
+                        for minute in range(0,rowsperday):
                             startTime = startTime + datetime.timedelta(minutes = 20)
-                            print("%s,%s,%s,%s,%s,%s,%s"%(startTime, 
+                            print("%s,%s,%s,%s,%s,%s,%s"%(startTime.strftime("%Y-%m-%d"), 
                                                             round(dataFrame['Open'][dataIndex]*multiplier,2), 
                                                             round(dataFrame['High'][dataIndex]*multiplier,2),
                                                             round(dataFrame['Low'][dataIndex]*multiplier,2), 
@@ -85,5 +87,6 @@ if __name__ == '__main__':
     #tickerStrings = ['ICCM.TA']
 
     # For testing purposes only!
+    YahooFinancePricesBuilder().BuildFile('XBI',datetime.datetime.strptime('2016-01-01', '%Y-%m-%d'))
     YahooFinancePricesBuilder().BuildFile('ICCM.TA',datetime.datetime.strptime('2016-01-01', '%Y-%m-%d'))
     #YahooFinancePricesBuilder.GetFileLastDate('c:/prices/ICCM.TA.csv')

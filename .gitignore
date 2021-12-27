@@ -19,7 +19,7 @@ parts/
 sdist/
 var/
 Transactions/
-datas/
+Prices/
 *.egg-info/
 .installed.cfg
 *.egg
