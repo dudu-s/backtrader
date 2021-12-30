@@ -1,6 +1,7 @@
 from datetime import date
 import datetime
 import csv
+import math
 import os.path
 import sys
 
@@ -20,7 +21,7 @@ class PastTransaction:
         self.price = float(pr)
 
 class TransactionsLoader:
-    
+
     def Load(self, symbol):
         transactions_ = []
         modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -31,7 +32,9 @@ class TransactionsLoader:
             spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
             for row in spamreader:
                 if header == False:
-                    transactions_.append(PastTransaction(row[0], datetime.datetime.strptime(row[1], '%m/%d/%Y'), row[3], row[2]))
+                    amount = math.floor(float(row[3]))
+                    if (amount > 0):
+                        transactions_.append(PastTransaction(row[0], datetime.datetime.strptime(row[1], '%m/%d/%Y'), amount, round(float(row[2]),4)))
                 header = False
         
         return transactions_

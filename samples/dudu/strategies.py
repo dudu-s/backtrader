@@ -1,9 +1,8 @@
-from datetime import date
 import math
 
+import datetime #do not delete - for breakpoints
 import backtrader as bt
 from backtrader.order import Order
-from transactionsLoader import *
 
 
 class OldStrategy(bt.Strategy):
@@ -36,7 +35,8 @@ class OldStrategy(bt.Strategy):
             self.pastTransactions[index] = {'transactionIndex':0,
                                             'dataIndex':index, 
                                             'data':self.datas[index], 
-                                            'transactions':TransactionsLoader().Load(self.p.symbolsMapper[index])}
+                                            'transactions':self.p.symbolsMapper[index]['transactions'],
+                                            'ticker':self.p.symbolsMapper[index]['ticker']}
         
 
         # Keep track of pending orders
@@ -67,11 +67,12 @@ class OldStrategy(bt.Strategy):
             return
 
 
+
         # Check if an order has been completed
         # Attention: broker could reject order if not enough cash
         if order.status in [order.Completed]:
             if order.isbuy():
-                self.log('BUY EXECUTED, Price: %.2f, Amount: %.2F, Cost: %.2f, Commission: %.2f' %
+                self.log('BUY EXECUTED,%.4f, Amount: %.4F, Cost: %.4f, Commission: %.4f' %
                          (order.executed.price*self.p.priceSize,
                           order.executed.size,
                           order.executed.value*self.p.priceSize,
@@ -79,7 +80,7 @@ class OldStrategy(bt.Strategy):
                 self.buyprice = order.executed.price
                 self.buycomm = order.executed.comm
             elif order.issell():
-                self.log('SELL EXECUTED, Price: %.2f, Amount: %.2F, Cost: %.2f, Commission: %.2f' %
+                self.log('SELL EXECUTED,%.4f, Amount: %.2F, Cost: %.4f, Commission: %.2f' %
                          (order.executed.price*self.p.priceSize,
                           order.executed.size,
                           order.executed.value*self.p.priceSize,
@@ -87,8 +88,18 @@ class OldStrategy(bt.Strategy):
 
             self.bar_executed = len(self)
 
-        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log('Order Canceled/Margin/Rejected')
+        elif order.status in [order.Canceled, order.Margin, order.Rejected,order.Expired]:
+            switcher = {order.Canceled:'Cancelled', 
+                        order.Margin:'Margin',
+                        order.Rejected:'Rejected',
+                        order.Expired:'Expired'} 
+
+            self.log('Order %s!!!,%.4f, Amount: %.4F, Cost: %.4f' %
+                     (switcher[order.status],
+                      order.created.price*self.p.priceSize,
+                          order.created.size,
+                          order.created.value*self.p.priceSize))
+        
 
         self.order[order.p.data] = None
 
@@ -114,33 +125,36 @@ class OldStrategy(bt.Strategy):
 
                 # Not yet in the market... we MIGHT BUY if...
                 if trans:
+                    validityDate = bt.num2date(self.datadate[0])+datetime.timedelta(days = 1)
                     if trans.transactionType == 'buy':
-                        self.log('BUY CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
-                                 (trans.price * self.p.priceSize,
+                        self.log('BUY CREATE %s, %.4f, Amount: %.4f, Cost: %.4f' % 
+                                 (metaData['ticker'],
+                                  trans.price * self.p.priceSize,
                                   trans.amount,
                                   trans.price * self.p.priceSize * trans.amount))
-                        order = self.buy(exectype=Order.Limit,price=trans.price,size=trans.amount, data=currentData)
+                        order = self.buy(exectype=Order.Limit,price=trans.price,size=trans.amount, data=currentData,valid=validityDate)
                         self.order[currentData] = order
                         metaData['transactionIndex'] = metaData['transactionIndex'] + 1
                 
-                if self.position:
-                    # Already in the market... we might sell
-                    if trans:
+                    elif self.getposition(data=currentData):
+                        # Already in the market... we might sell
+                        #if trans:
                         if trans.transactionType == 'sell':
 
-                            self.log('SELL CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
-                                     (trans.price * self.p.priceSize,
-                                      trans.amount, 
-                                      trans.price * self.p.priceSize * trans.amount))
+                            self.log('SELL CREATE %s, %.4f, Amount: %.4f, Cost: %.4f' % 
+                                        (metaData['ticker'],
+                                        trans.price * self.p.priceSize,
+                                        trans.amount, 
+                                        trans.price * self.p.priceSize * trans.amount))
 
                             # Keep track of the created order to avoid a 2nd order
-                            self.order[currentData] = self.sell(exectype=Order.Limit,price=trans.price,size=trans.amount)
+                            self.order[currentData] = self.sell(exectype=Order.Limit,price=trans.price,size=trans.amount, data=currentData,valid=validityDate)
                             metaData['transactionIndex'] = metaData['transactionIndex'] + 1
-        
 
         if len(self.data) == self.data.buflen():
             self.close(data=self.datas[0])
-        
+
+
     def addCashForAllBuys(self):
         additionalcash = 0
         pendingOrders = 0
