@@ -1,6 +1,8 @@
 from time import strftime, strptime
+from numpy import unicode_
 import yfinance as yf
 import sys
+import os
 import datetime
 import csv
 import os.path
@@ -29,6 +31,7 @@ class AbstractCSVDataProviderBuilder(AbstractDataProviderBuilder):
     def getData(self, ticker, startDate):
         pass
 
+# Data Provider = 1
 class YahooDataProviderBuilder(AbstractDataProviderBuilder):
     def getData(self, ticker, startDate):
 
@@ -49,7 +52,8 @@ class GenericCSVProviderBuilder(AbstractCSVDataProviderBuilder):
     volumeIndex :int
     reversedOrder : bool
 
-    def __init__(self, headerCount, reversedOrder, dateIndex, closeIndex, openIndex, lowIndex, highIndex, volumeIndex):
+    # Header Count, Reversed Order,  Date, Close, Open, High, Low, Volume
+    def __init__(self, headerCount, reversedOrder, dateIndex, closeIndex, openIndex, highIndex, lowIndex, volumeIndex):
         super(GenericCSVProviderBuilder, self).__init__()
         self.headerCount = headerCount
         self.reversedOrder = reversedOrder
@@ -63,6 +67,8 @@ class GenericCSVProviderBuilder(AbstractCSVDataProviderBuilder):
     def parseRow(self, index, startDate, row):
         pass
 
+    def getEncoding(self):
+        pass
 
     def getData(self, ticker, startDate):
 
@@ -71,30 +77,34 @@ class GenericCSVProviderBuilder(AbstractCSVDataProviderBuilder):
 
         self.filepath = self.filepath + "/" + ticker + ".csv"
 
-        with open(self.filepath, 'r') as textfile:
+        with open(self.filepath, 'r', encoding=self.getEncoding()) as textfile:
             rows = list(csv.reader(textfile))
             
             if self.reversedOrder:
                 i = len(rows)
                 for row in reversed(rows):
-                    if i<=self.headerCount: continue
-                    self.parseRow(startDate, row, lstData, lstIndex)
+                    if i>self.headerCount: 
+                        self.parseRow(startDate, row, lstData, lstIndex)
                     i = i-1
             else:
                 i = 0
-                for row in reversed(rows):
-                    if i<self.headerCount: continue
-                    self.parseRow(startDate, row, lstData, lstIndex)
+                for row in rows:
+                    if i>=self.headerCount: 
+                        self.parseRow(startDate, row, lstData, lstIndex)
                     i = i+1
         
         return self.transformToPanda(lstData, lstIndex)
 
+# Data Provider = 2
 class InvestingCSVDataProvider(GenericCSVProviderBuilder):
     
     
-    # Header Count, Reversed Order,  Date, Close, Open, Low, High, Volume
+    # Header Count, Reversed Order,  Date, Close, Open, High, Low, Volume
     def __init__(self):
-        super(InvestingCSVDataProvider, self).__init__(1,True, 0, 1, 2, 4, 3, 5)
+        super(InvestingCSVDataProvider, self).__init__(1,True, 0, 1, 2, 3, 4, 5)
+
+    def getEncoding(self):
+        return "UTF-8"
 
     def parseRow(self, startDate, row, lstData, lstIndex):
 
@@ -107,6 +117,8 @@ class InvestingCSVDataProvider(GenericCSVProviderBuilder):
             volume = float(row[self.volumeIndex][0:-1])*1000000
         elif row[self.volumeIndex][-1] == "K":
             volume = float(row[self.volumeIndex][0:-1])*1000
+        elif row[self.volumeIndex][-1] == "-":
+            volume=0
         else:
             volume = float(row[self.volumeIndex])
 
@@ -118,9 +130,111 @@ class InvestingCSVDataProvider(GenericCSVProviderBuilder):
                         volume])
         lstIndex.append(date_object)
 
+# Data Provider = 3
+class ILCSVDataProvider(GenericCSVProviderBuilder):
+    
+    
+    # Header Count, Reversed Order,  Date, Close, Open, High, Low, Volume
+    def __init__(self):
+        super(ILCSVDataProvider, self).__init__(1,True, 0, 1, 2, 3, 4, 5)
+
+    def getEncoding(self):
+        return "ANSI"
+
+    def parseRow(self, startDate, row, lstData, lstIndex):
+
+        date_object = datetime.datetime.strptime(row[self.dateIndex], "%d.%m.%Y")
+
+        if date_object < startDate:
+            return
+
+        if row[self.volumeIndex][-1] == "M": 
+            volume = float(row[self.volumeIndex][0:-1])*1000000
+        elif row[self.volumeIndex][-1] == "K":
+            volume = float(row[self.volumeIndex][0:-1])*1000
+        elif row[self.volumeIndex][-1] == "-":
+            volume=0
+        else:
+            volume = float(row[self.volumeIndex])
+
+        lstData.append([float(row[self.openIndex]), 
+                        float(row[self.highIndex]), 
+                        float(row[self.lowIndex]), 
+                        float(row[self.closeIndex]), 
+                        float(row[self.closeIndex]), 
+                        volume])
+        lstIndex.append(date_object)
+
+# Data Provider = 4
+class Investing2DatesCSVDataProvider(GenericCSVProviderBuilder):
+    
+    
+    # Header Count, Reversed Order,  Date, Close, Open, High, Low, Volume
+    def __init__(self):
+        super(Investing2DatesCSVDataProvider, self).__init__(1,False, 0, 2, 3, 4, 5, 6)
+
+    def getEncoding(self):
+        return "UTF-8"
+
+    def parseRow(self, startDate, row, lstData, lstIndex):
+
+        date_object = datetime.datetime.strptime(row[self.dateIndex], "%b %d, %Y")
+
+        if date_object < startDate:
+            return
+
+        if row[self.volumeIndex][-1] == "M": 
+            volume = float(row[self.volumeIndex][0:-1])*1000000
+        elif row[self.volumeIndex][-1] == "K":
+            volume = float(row[self.volumeIndex][0:-1])*1000
+        elif row[self.volumeIndex][-1] == "-":
+            volume=0
+        else:
+            volume = float(row[self.volumeIndex])
+
+        lstData.append([float(row[self.openIndex]), 
+                        float(row[self.highIndex]), 
+                        float(row[self.lowIndex]), 
+                        float(row[self.closeIndex]), 
+                        float(row[self.closeIndex]), 
+                        volume])
+        lstIndex.append(date_object)
+
+#https://stockinvest.us/
+# Data Provider = 5
+class StockInvestCSVDataProvider(GenericCSVProviderBuilder):
+    
+    
+    # Header Count, Reversed Order,  Date, Close, Open, High, Low, Volume
+    def __init__(self):
+        super(StockInvestCSVDataProvider, self).__init__(1,True, 0, 4, 1, 2, 3, 5)
+
+    def getEncoding(self):
+        return "UTF-8"
+
+    def parseRow(self, startDate, row, lstData, lstIndex):
+
+        date_object = datetime.datetime.strptime(row[self.dateIndex], "%d/%m/%Y")
+
+        if date_object < startDate:
+            return
+
+        volume = float(row[self.volumeIndex])
+
+        lstData.append([float(row[self.openIndex][1:]), 
+                        float(row[self.highIndex][1:]), 
+                        float(row[self.lowIndex][1:]), 
+                        float(row[self.closeIndex][1:]), 
+                        float(row[self.closeIndex][1:]), 
+                        volume])
+        lstIndex.append(date_object)
 
 class YahooFinancePricesBuilder:
-    providers_types= {1: YahooDataProviderBuilder, 2:InvestingCSVDataProvider}
+    providers_types= {1: YahooDataProviderBuilder, 
+                      2:InvestingCSVDataProvider,
+                      3:ILCSVDataProvider,
+                      4:Investing2DatesCSVDataProvider,
+                      5:StockInvestCSVDataProvider}
 
     def GetFileLastDate(self, filePath):
         original_stdout = sys.stdout # Save a reference to the original standard output
@@ -132,7 +246,9 @@ class YahooFinancePricesBuilder:
                 spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
                 for row in spamreader:
                     i = i+1
-                lastDate = row[0][0:10]
+                
+                if i > 1:
+                    lastDate = row[0][0:10]
         else:
             with open(filePath, 'w+') as f:
                 sys.stdout = f # Change the standard output to the file we created.

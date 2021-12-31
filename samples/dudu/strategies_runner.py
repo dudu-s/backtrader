@@ -78,32 +78,32 @@ def printResults(final_results_dict):
 def loadSymbols(updatePrices, fromdate):
 
     
-    yahooTickerStrings = ['CRTX', 'ALCRB.PA', 'CLGN', 'ENLV', 'PHGE', 'EDIT', 'MTLF.TA', 
+    tickerStrings = ['CRTX', 'ALCRB.PA', 'CLGN', 'ENLV', 'PHGE', 'EDIT', 'MTLF.TA', 
                             'BMLK.TA', 'ICCM.TA', 'MDWD', 'EXAS', 'MITC', 'ENTX', 'DNA', 
                             'PHGE.TA', 'RCEL', 'NXFR.TA', 'AVH.AX', 'BYND', 'BVXV', 
-                             'RWLK', 'SGMO', 'URGN', 'ENLV.TA', 'PSTI.TA',
-                             'NXGN.TA']
+                             'RWLK', 'SGMO', 'URGN', 'ENLV.TA', 'PSTI.TA','NXGN.TA',
+                             'MITC.TA', 'GHDX', 'NTGN','JUNO']
     
     
-    #yahooTickerStrings = ['CLGN', 'MTLF.TA']
+    #tickerStrings = ['JUNO']#'CLGN', 'MTLF.TA']
 
-    otherTickerStrings = []# 'SRNG', 'GHDX', 'JUNO', 'KITE','NTGN', FAKE1, FAKE2
-    dataProviders = {'DNA' : [2,1] }
+    
+    dataProviders = {'DNA' : [2,1],
+                     'MITC.TA' : [3],
+                     'GHDX' : [4],
+                     'NTGN' : [2],
+                     'JUNO':[5]}
 
 
     symbolDataIndexes = {}
     i=0
-    for ticker in yahooTickerStrings:
+    for ticker in tickerStrings:
         transactionsLoader = TransactionsLoader()
         symbolDataIndexes[i] = {'ticker':ticker, 'transactions':transactionsLoader.Load(ticker)}
         if updatePrices:
             YahooFinancePricesBuilder().BuildFile(ticker, fromdate, dataProviders.get(ticker,[1]))
         i = i+1
-
-    # Need to adjust the dates here to start at 1/1/2017
-    for ticker in otherTickerStrings:
-        symbolDataIndexes[i] = {'ticker':ticker, 'transactions':TransactionsLoader().Load(ticker)}
-        i = i+1
+    
     return symbolDataIndexes
 
 def runstrategy():
@@ -117,7 +117,7 @@ def runstrategy():
     fencingpath = os.path.join(modpath, args.data + 'XBI' + '.csv')
 
     final_results_dict = {}
-    strategies_list = [OldStrategy]
+    strategies_list = [OldStrategy,OldStrategyWithETFFencing]
     #strategies_list = [OldStrategyWithETFFencing]
 
     symbolDataIndexes = loadSymbols(args.updatePrices, fromdate)
@@ -232,10 +232,6 @@ def runstrategy():
 
                 #price,size
 
-        for order in st0[0].broker.orders:
-             metaData = [st0[0].pastTransactions[transdata] for transdata in st0[0].pastTransactions if st0[0].pastTransactions[transdata]['data'] is order.params.data][0]
-
-
     # Average results for the different data feeds
     #arr = np.array(final_results_dict)
     #final_results_dict = [[int(val) if val.is_integer() else round(val, 2) for val in i] for i in arr.mean(0)]
@@ -264,7 +260,7 @@ def parse_args():
                         help='data to add to the system')
 
 
-    parser.add_argument('--fromdate', '-f', default='2016-12-31',
+    parser.add_argument('--fromdate', '-f', default='2017-01-01',
                         help='Starting date in YYYY-MM-DD format')
 
     parser.add_argument('--todate', '-t', default='2021-12-19',
@@ -297,7 +293,7 @@ def parse_args():
     parser.add_argument('--plot', '-p', action='store_true',
                         help='Plot the read data')
 
-    parser.add_argument('--updatePrices', '-u', action='store_false',
+    parser.add_argument('--updatePrices', '-u', action='store_true',
                         help='Plot the read data')
 
     parser.add_argument('--numfigs', '-n', default=1,
