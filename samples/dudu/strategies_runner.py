@@ -8,6 +8,9 @@ import datetime
 
 from backtrader.analyzers.transactions import Transactions
 from backtrader.functions import Or
+from backtrader.observers import benchmark
+from backtrader.observers.buysell import BuySell
+from backtrader.observers.trades import Trades
 
 import numpy as np
 
@@ -16,6 +19,7 @@ from backtrader.analyzers import (AnnualReturn, DrawDown, TimeDrawDown, SharpeRa
                                   TradeAnalyzer, annualreturn)
 from backtrader.filters import CalendarDays
 
+from observers import *
 from analyzers import *
 from transactionsLoader import *
 from GetPrices import *
@@ -64,14 +68,17 @@ def printResults(final_results_dict):
 
         if not zeroOnce:
             for yearKey in (final_results_dict[key][0][8]):
+                lines['Return %s\t\t\t'% (yearKey)] = ''
                 lines['Draw Down %s\t\t\t'% (yearKey)] = ''
                 lines['Draw Down Period (Days) %s\t'% (yearKey)] = ''
             zeroOnce = True
 
+        i = 0
         for yearKey in (final_results_dict[key][0][8]):
+            lines['Return %s\t\t\t'% (yearKey)] = lines['Return %s\t\t\t'% (yearKey)] + '%.2F%%\t\t\t'% ((final_results_dict[key][0][9][i] - 1)*100)
             lines['Draw Down %s\t\t\t'% (yearKey)] = lines['Draw Down %s\t\t\t'% (yearKey)] + '%.2F%%\t\t\t'% (final_results_dict[key][0][8][yearKey].max.drawdown)
             lines['Draw Down Period (Days) %s\t'% (yearKey)] = lines['Draw Down Period (Days) %s\t'% (yearKey)] + '%.2F\t\t\t'% (final_results_dict[key][0][8][yearKey].max.len/24)
-        
+            i = i + 1
     for key in lines:
         print(key+lines[key])
 
@@ -117,14 +124,15 @@ def runstrategy():
     fencingpath = os.path.join(modpath, args.data + 'XBI' + '.csv')
 
     final_results_dict = {}
-    strategies_list = [OldStrategy,OldStrategyWithETFFencing]
+    strategies_list = [OldStrategy]
     #strategies_list = [OldStrategyWithETFFencing]
 
     symbolDataIndexes = loadSymbols(args.updatePrices, fromdate)
 
     for strat in strategies_list:
         
-        cerebro = bt.Cerebro(optreturn=False)
+        cerebro = bt.Cerebro(optreturn=False, stdstats=False)
+        #cerebro = bt.Cerebro(optreturn=True, optdatas=True)
 
         for index in symbolDataIndexes:
             datapath = os.path.join(modpath, args.data + symbolDataIndexes[index]['ticker'] + '.csv')
@@ -132,10 +140,13 @@ def runstrategy():
                 dataname=datapath,
                 fromdate=fromdate,
                 todate=todate,
+                
             )
 
             data.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
+            data.plotinfo.plot = False
             cerebro.adddata(data, name=symbolDataIndexes[index]['ticker'])
+            #cerebro.adddata(data, name=None)
 
         fencingData = bt.feeds.YahooFinanceCSVData(
             dataname=fencingpath,
@@ -173,15 +184,17 @@ def runstrategy():
 
         cerebro.broker.set_fundmode(True)
 
-        cerebro.addobserver(bt.observers.FundValue)
-        cerebro.addobserver(bt.observers.FundShares)
+        cerebro.addobserver(CashObserver)
+        cerebro.addobserver(FundObserver)
+        cerebro.addobserver(Trades)
+        cerebro.addobserver(bt.observers.DrawDown)
         
         st0 = cerebro.run()
         
         my_dict = st0[0].analyzers.time_return.get_analysis()
         annual_returns = [v+1 for _, v in my_dict.items()]
-        fdict = st0[0].analyzers.time_return_fencing.get_analysis()
-        fencingreturns = [[v,fdict[v]] for v in fdict if fdict[v] <= -1 ]
+        #fdict = st0[0].analyzers.time_return_fencing.get_analysis()
+        #fencingreturns = [[v,fdict[v]] for v in fdict if fdict[v] <= -1 ]
         annualReturn = math.prod(annual_returns)
         
         cashWorth = st0[0].cash_addition + args.cash
@@ -208,10 +221,12 @@ def runstrategy():
             sharpe,
             drawDownPercentage,
             drawDownPeriod,
-            drawdownPerYear
+            drawdownPerYear,
+            annual_returns
         ])
         final_results_dict[strat] = results_list
 
+        # Validate the results
         trackedorders=[]
         nonexecuted_transactions = {}
         for tickerIndex in st0[0].pastTransactions:
@@ -290,7 +305,7 @@ def parse_args():
                         help='Starting Cash')
 
 
-    parser.add_argument('--plot', '-p', action='store_true',
+    parser.add_argument('--plot', '-p', action='store_false',
                         help='Plot the read data')
 
     parser.add_argument('--updatePrices', '-u', action='store_true',
