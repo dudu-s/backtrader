@@ -3,40 +3,46 @@ import math
 import datetime #do not delete - for breakpoints
 import backtrader as bt
 from backtrader.order import Order
+import numpy as np
 
 
 class OldStrategy(bt.Strategy):
     '''
     Current transactions based on our history log
     '''
-    params = (('symbol', ''), 
-              ('priceSize', 1),
-              ('symbolsMapper',{}))
+    params = dict(priceSize=1,
+                  symbolsMapper=[],
+                  detailedLog=False,
+                  number_of_days=2,
+                  keep_cash_percentage=0.2)
     
-    def findTransactions(self, metaData, transactionDate):
+    def findTransactions(self, metaData, transactionDateRange):
         
-        res = [trans for trans in metaData['transactions'][metaData['transactionIndex']:] if int(transactionDate) == bt.date2num(trans.transactionDate)]
+        res = [trans for trans in metaData['transactions'][metaData['transactionIndex']:] if bt.date2num(trans.transactionDate) in transactionDateRange]
         return res
         
 
     def log(self, txt, force=False, dt=None):
-        #if force==True:
+        if self.p.detailedLog or force==True:
             ''' Logging function for this strategy'''
             dt = dt or self.datas[0].datetime.date(0)
             print('%s, %s' % (dt.isoformat(), txt))
-
+            
     def __init__(self):
         # Keep a reference to the "close" line in the data[0] dataseries
         self.dataclose = self.datas[0].close
         self.datadate = self.datas[0].datetime 
         
+        
         self.pastTransactions = {}
-        for index in self.p.symbolsMapper:
-            self.pastTransactions[index] = {'transactionIndex':0,
-                                            'dataIndex':index, 
-                                            'data':self.datas[index], 
-                                            'transactions':self.p.symbolsMapper[index]['transactions'],
-                                            'ticker':self.p.symbolsMapper[index]['ticker']}
+        i = 0
+        for line in self.p.symbolsMapper:
+            self.pastTransactions[i] = {'transactionIndex':0,
+                                            'dataIndex':i, 
+                                            'data':self.datas[i], 
+                                            'transactions':line[1],
+                                            'ticker':line[0]}
+            i = i+1
         
 
         # Keep track of pending orders
@@ -53,13 +59,7 @@ class OldStrategy(bt.Strategy):
         #rsi = bt.indicators.RSI(self.datas[0], period=3)
         #bt.indicators.SmoothedMovingAverage(rsi, period=3)
         #bt.indicators.ATR(self.datas[0], plot=False,period=3)
-    
-    '''
-    def notify_fund(self, cash, value, fundvalue, shares):
-        self.log('%.4f,%.4F,%.4f,%.4f' %
-                    (cash, value, fundvalue, shares), True)
-    '''
-
+   
     def notify_order(self, order):
         
         if order.status in [order.Submitted, order.Accepted]:
@@ -116,10 +116,13 @@ class OldStrategy(bt.Strategy):
         if self.addCashForAllBuys():
             return
 
+        if self.p.keep_cash_percentage > 0:
+            self.removeCashOnNoTrades()
+
         for metaDataIndex in self.pastTransactions:
             metaData = self.pastTransactions[metaDataIndex]
             currentData = metaData['data']
-            res = self.findTransactions(metaData, self.datadate[0])
+            res = self.findTransactions(metaData, range(int(self.datadate[0]), int(self.datadate[0])+1))
             
             for trans in res:
 
@@ -134,11 +137,11 @@ class OldStrategy(bt.Strategy):
                                   trans.price * self.p.priceSize * trans.amount))
                         order = self.buy(exectype=Order.Limit,price=trans.price,size=trans.amount, data=currentData,valid=validityDate)
                         self.order[currentData] = order
+                        self.signalBuy(trans.price * self.p.priceSize, trans.amount)
                         metaData['transactionIndex'] = metaData['transactionIndex'] + 1
                 
                     elif self.getposition(data=currentData):
                         # Already in the market... we might sell
-                        #if trans:
                         if trans.transactionType == 'sell':
 
                             self.log('SELL CREATE %s, %.4f, Amount: %.4f, Cost: %.4f' % 
@@ -149,33 +152,47 @@ class OldStrategy(bt.Strategy):
 
                             # Keep track of the created order to avoid a 2nd order
                             self.order[currentData] = self.sell(exectype=Order.Limit,price=trans.price,size=trans.amount, data=currentData,valid=validityDate)
+                            self.signalSell(trans.price * self.p.priceSize, trans.amount)
                             metaData['transactionIndex'] = metaData['transactionIndex'] + 1
 
-        if len(self.data) == self.data.buflen():
-            self.close(data=self.datas[0])
-
+        if len(self.data) + 2 == self.data.buflen():
+            for data in self.datas:
+                self.log('CLOSE DATA %s'% (data._name))
+                self.close(data=data)
 
     def addCashForAllBuys(self):
         additionalcash = 0
-        pendingOrders = 0
-        for metaDataIndex in self.pastTransactions:
-            metaData = self.pastTransactions[metaDataIndex]
-            res = self.findTransactions(metaData, self.datadate[0])
-            
-            for trans in res:
-
-                # Not yet in the market... we MIGHT BUY if...
-                if trans:
-                    if trans.transactionType == 'buy':
-                        pendingOrders = pendingOrders + (trans.price * trans.amount)
-                        
         
-        additionalcash = self.getNeededCash(pendingOrders)
+        additionalcash = self.getNeededCash(self.getPendingOrdersCash(range(int(self.datadate[0]), int(self.datadate[0])+1)))
         if  additionalcash > 0:
             self.addCash(additionalcash)
             return True
         return False
+
+    def removeCashOnNoTrades(self):
+        min_cash_to_remove = -100
         
+        pendingOrders = self.getPendingOrdersCash(range(int(self.datadate[0]), int(self.datadate[0])+self.p.number_of_days+1))
+        if  pendingOrders > 0:
+            return False
+
+        cash_percentage = self.broker.getcash() / self.broker.getvalue()
+        if cash_percentage > self.p.keep_cash_percentage:
+            cash_to_remove = self.p.keep_cash_percentage * self.broker.getvalue() - self.broker.getcash()
+            if cash_to_remove < min_cash_to_remove: 
+                self.addCash(cash_to_remove)
+            return True
+
+        return False
+
+    def getPendingOrdersCash(self, date):
+        pendingOrders = 0
+        for metaDataIndex in self.pastTransactions:
+            metaData = self.pastTransactions[metaDataIndex]
+            pendingOrders = pendingOrders + sum([trans.price * trans.amount for trans in self.findTransactions(metaData, date) if not trans is None and trans.transactionType == 'buy'])
+            
+        return pendingOrders
+
     def addCash(self, cost): 
         self.broker.add_cash(cost)
         self.cash_addition = self.cash_addition + cost
@@ -184,6 +201,12 @@ class OldStrategy(bt.Strategy):
 
     def getNeededCash(self, cost): 
         return max(0, math.ceil(cost - self.broker.get_cash()))
+
+    def signalBuy(self, price, amount):
+        pass
+
+    def signalSell(self, price, amount):
+        pass
 
 
 class OldStrategyWithETFFencing(OldStrategy):
@@ -196,7 +219,7 @@ class OldStrategyWithETFFencing(OldStrategy):
     
     def __init__(self):
         super(OldStrategyWithETFFencing,self).__init__()
-        self.fencingData = self.datas[1]
+        self.fencingData = self.datas[len(self.datas)-1]
         self.order[self.fencingData] = None
 
     def notify_order(self, order):
@@ -235,12 +258,7 @@ class OldStrategyWithETFFencing(OldStrategy):
         self.order[order.p.data] = None
         
 
-    def GetNextOrder(self):
-        for data in self.order.keys():
-            if not self.order[data] is None and data != self.fencingData:
-                return self.order[data]
-        return None
-
+    
     def notify_trade(self, trade):
         if not trade.isclosed:
             return
@@ -253,46 +271,90 @@ class OldStrategyWithETFFencing(OldStrategy):
                      (trade.pnl*self.p.priceSize, trade.pnlcomm))
 
     def next(self):
-
         super(OldStrategyWithETFFencing,self).next()
         
-        if all(value == None for value in self.order.values()):
-            return
-                
-        order = self.GetNextOrder()
-        if order is None or not self.order[self.fencingData] is None:
-            return
+        fencingPercentage = 1
+        minDaysFromLastFencingTransaction = 30
+        minFencingCost = 5000
 
+        invested = sum([order.p.data[0] * order.executed.size for order in self.broker.orders if order.status == order.Completed and order.p.data != self.fencingData])
+        fencingCost = invested * fencingPercentage
+        currentFencing = self.calculateCurrentFencing()
         
+        if currentFencing['lastDate'] is None or self.datadate[0] - currentFencing['lastDate'] > minDaysFromLastFencingTransaction:
+            fencingDelta = fencingCost - abs(currentFencing['sum'])
 
-        # Not yet in the market... we MIGHT BUY if...
-        if order.isbuy():
-            price = self.fencingData[0]
-            orderValue = order.p.size * order.p.price
-            amount = int(orderValue / price)
+            if fencingDelta > minFencingCost:
+                fencing_price = self.fencingData[0]
+                fencing_amount = int(fencingDelta / fencing_price)
 
-            self.log('SHORT SELL CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
-                        (price * self.p.priceSize,
-                        amount,
-                        orderValue))
+                if fencingDelta > 0:
+                    self.log('SHORT SELL CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
+                                (fencing_price * self.p.priceSize,
+                                fencing_amount,
+                                fencing_price * fencing_amount))
+
+                    self.order[self.fencingData] = self.sell(data=self.fencingData, exectype=Order.Limit, 
+                                                        price=fencing_price, size = fencing_amount)
+                elif fencingDelta < 0:
+                    self.log('CLOSE SHORT CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
+                        (fencing_price * self.p.priceSize,
+                        fencing_amount,
+                        fencing_price * fencing_amount))
+
+                    self.order[self.fencingData] = self.buy(data=self.fencingData, exectype=Order.Limit, 
+                                                price=fencing_price, size = fencing_amount)
+    
+    def calculateCurrentFencing(self):
+        ordersSum = 0
+        lastOrderDate = None
+
+        orders = [order for order in self.broker.orders 
+                      if order.p.data is self.fencingData and 
+                      order.issell() and
+                      order.status in [order.Completed,order.Submitted, order.Accepted]] + \
+                [order for order in self.broker.pending 
+                                  if order.p.data is self.fencingData and 
+                                  order.issell()]
+
+        if len(orders) > 0:
+            ordersSum = sum(order.executed.price * order.executed.size for order in orders)
+            lastOrderDate = orders[len(orders)-1].created.dt
+        
+        return {'sum':ordersSum,
+               'lastDate':lastOrderDate}
+
+    def signalBuy(self, price, amount):
+        i=0
+    '''    
+    def signalBuy(self, price, amount):
+        orderValue = price * amount
+        fencing_price = self.fencingData[0]
+        fencing_amount = int(orderValue / fencing_price)
+
+        self.log('SHORT SELL CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
+                    (fencing_price * self.p.priceSize,
+                    fencing_amount,
+                    orderValue))
 
             
 
-            self.order[self.fencingData] = self.sell(data=self.fencingData, exectype=Order.Limit, 
-                                                price=price, size = amount)
+        self.order[self.fencingData] = self.sell(data=self.fencingData, exectype=Order.Limit, 
+                                            price=fencing_price, size = fencing_amount)
 
-        if order.issell():
-            # Already in the market... we might sell
-            price = self.fencingData[0]
-            orderValue = order.p.size * order.p.price
-            amount = int(orderValue / price)
+    def signalSell(self, price, amount):
+        orderValue = price * amount
+        fencing_price = self.fencingData[0]
+        fencing_amount = int(orderValue / fencing_price)
 
-            self.log('CLOSE SHORT CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
-                        (price * self.p.priceSize,
-                        amount,
-                        orderValue))
+        self.log('CLOSE SHORT CREATE, %.2f, Amount: %.2f, Cost: %.2f' % 
+                (fencing_price * self.p.priceSize,
+                fencing_amount,
+                orderValue))
 
-            self.order[self.fencingData] = self.buy(data=self.fencingData, exectype=Order.Limit, 
-                                                price=price, size = amount)
-  
+            
+
+        self.order[self.fencingData] = self.buy(data=self.fencingData, exectype=Order.Limit, 
+                                            price=fencing_price, size = fencing_amount)
+      '''      
 #SMAcrossover, EmaCrossLongShort

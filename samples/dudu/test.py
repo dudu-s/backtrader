@@ -5,6 +5,11 @@ import datetime  # For datetime objects
 import os.path  # To manage paths
 import sys  # To find out the script name (in argv[0])
 
+# some_file.py
+import sys
+# insert at 1, 0 is the script path (or '' in REPL)
+sys.path.insert(1, '/path/to/application/app/folder')
+
 # Import the backtrader platform
 import backtrader as bt
 

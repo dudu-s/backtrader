@@ -67,32 +67,33 @@ def printResults(final_results_dict):
         lines[drawDownPeriodKey]        = lines[drawDownPeriodKey] + '%.2F\t\t\t'% (final_results_dict[key][0][7])
 
         if not zeroOnce:
-            for yearKey in (final_results_dict[key][0][8]):
+            for yearKey in sorted(final_results_dict[key][0][8].keys(), reverse=True):
                 lines['Return %s\t\t\t'% (yearKey)] = ''
                 lines['Draw Down %s\t\t\t'% (yearKey)] = ''
                 lines['Draw Down Period (Days) %s\t'% (yearKey)] = ''
             zeroOnce = True
 
         i = 0
-        for yearKey in (final_results_dict[key][0][8]):
-            lines['Return %s\t\t\t'% (yearKey)] = lines['Return %s\t\t\t'% (yearKey)] + '%.2F%%\t\t\t'% ((final_results_dict[key][0][9][i] - 1)*100)
+        size = len(final_results_dict[key][0][8].keys())
+        for yearKey in sorted(final_results_dict[key][0][8].keys(), reverse=True):
+            i = i + 1
+            lines['Return %s\t\t\t'% (yearKey)] = lines['Return %s\t\t\t'% (yearKey)] + '%.2F%%\t\t\t'% ((final_results_dict[key][0][9][size - i] - 1)*100)
             lines['Draw Down %s\t\t\t'% (yearKey)] = lines['Draw Down %s\t\t\t'% (yearKey)] + '%.2F%%\t\t\t'% (final_results_dict[key][0][8][yearKey].max.drawdown)
             lines['Draw Down Period (Days) %s\t'% (yearKey)] = lines['Draw Down Period (Days) %s\t'% (yearKey)] + '%.2F\t\t\t'% (final_results_dict[key][0][8][yearKey].max.len/24)
-            i = i + 1
     for key in lines:
         print(key+lines[key])
 
 def loadSymbols(updatePrices, fromdate):
 
     
-    tickerStrings = ['CRTX', 'ALCRB.PA', 'CLGN', 'ENLV', 'PHGE', 'EDIT', 'MTLF.TA', 
+    tickerStrings = ['ALCRB.PA', 'CRTX', 'CLGN', 'ENLV', 'PHGE', 'EDIT', 'MTLF.TA', 
                             'BMLK.TA', 'ICCM.TA', 'MDWD', 'EXAS', 'MITC', 'ENTX', 'DNA', 
                             'PHGE.TA', 'RCEL', 'NXFR.TA', 'AVH.AX', 'BYND', 'BVXV', 
                              'RWLK', 'SGMO', 'URGN', 'ENLV.TA', 'PSTI.TA','NXGN.TA',
                              'MITC.TA', 'GHDX', 'NTGN','JUNO']
     
     
-    #tickerStrings = ['JUNO']#'CLGN', 'MTLF.TA']
+    tickerStrings = ['ENLV','BMLK.TA']#,'CLGN', 'MTLF.TA']
 
     
     dataProviders = {'DNA' : [2,1],
@@ -102,161 +103,185 @@ def loadSymbols(updatePrices, fromdate):
                      'JUNO':[5]}
 
 
-    symbolDataIndexes = {}
+    symbolDataIndexes = []
     i=0
     for ticker in tickerStrings:
-        transactionsLoader = TransactionsLoader()
-        symbolDataIndexes[i] = {'ticker':ticker, 'transactions':transactionsLoader.Load(ticker)}
+        symbolDataIndexes.append([ticker, TransactionsLoader().Load(ticker)])
         if updatePrices:
             YahooFinancePricesBuilder().BuildFile(ticker, fromdate, dataProviders.get(ticker,[1]))
         i = i+1
     
     return symbolDataIndexes
 
-def runstrategy():
-    args = parse_args()
-
-    # Get the dates from the args
+def addData(cerebro, args, symbolDatas):
+    
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+    fencingpath = os.path.join(modpath, args.data + 'XBI' + '.csv')
     fromdate = datetime.datetime.strptime(args.fromdate, '%Y-%m-%d')
     todate = datetime.datetime.strptime(args.todate, '%Y-%m-%d')
 
-    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    fencingpath = os.path.join(modpath, args.data + 'XBI' + '.csv')
-
-    final_results_dict = {}
-    strategies_list = [OldStrategy]
-    #strategies_list = [OldStrategyWithETFFencing]
-
-    symbolDataIndexes = loadSymbols(args.updatePrices, fromdate)
-
-    for strat in strategies_list:
-        
-        cerebro = bt.Cerebro(optreturn=False, stdstats=False)
-        #cerebro = bt.Cerebro(optreturn=True, optdatas=True)
-
-        for index in symbolDataIndexes:
-            datapath = os.path.join(modpath, args.data + symbolDataIndexes[index]['ticker'] + '.csv')
-            data = bt.feeds.YahooFinanceCSVData(
-                dataname=datapath,
-                fromdate=fromdate,
-                todate=todate,
-                
-            )
-
-            data.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
-            data.plotinfo.plot = False
-            cerebro.adddata(data, name=symbolDataIndexes[index]['ticker'])
-            #cerebro.adddata(data, name=None)
-
-        fencingData = bt.feeds.YahooFinanceCSVData(
-            dataname=fencingpath,
+    for index in symbolDatas:
+        datapath = os.path.join(modpath, args.data + index[0] + '.csv')
+        data = bt.feeds.YahooFinanceCSVData(
+            dataname=datapath,
             fromdate=fromdate,
             todate=todate,
+                
         )
 
-        fencingData.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
-        cerebro.adddata(fencingData, name='Fencing')
-        cerebro.addstrategy(strat, symbol=args.symbol, priceSize=1, symbolsMapper=symbolDataIndexes)
+        data.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
+        data.plotinfo.plot = False
+        cerebro.adddata(data, name=index[0])
 
-        results_list = []
+    # Add fencing Data
+    fencingData = bt.feeds.YahooFinanceCSVData(
+        dataname=fencingpath,
+        fromdate=fromdate,
+        todate=todate,
+    )
 
-        cerebro.broker.set_coc(True)
-        cerebro.broker.setcash(args.cash)
-        #cerebro.addsizer(MaxRiskSizer)
-        comminfo = PoalimCommission()
-        cerebro.broker.addcommissioninfo(comminfo)
+    fencingData.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
+    cerebro.adddata(fencingData, name='Fencing')
 
-        tframes = dict(
-            days=bt.TimeFrame.Days,
-            weeks=bt.TimeFrame.Weeks,
-            months=bt.TimeFrame.Months,
-            years=bt.TimeFrame.Years)
+def setCerebroParameters(cerebro, args):
+    cerebro.broker.set_coc(True)
+    cerebro.broker.setcash(args.cash)
+    #cerebro.addsizer(MaxRiskSizer)
+    comminfo = PoalimCommission()
+    cerebro.broker.addcommissioninfo(comminfo)
 
-        # Add the Analyzers
-        #cerebro.addanalyzer(SQN)
-        cerebro.addanalyzer(TimeReturn, _name='time_return', timeframe=tframes[args.tframe])
-        cerebro.addanalyzer(TimeReturn, _name='time_return_fencing', data=fencingData, timeframe=tframes[args.tframe])
-        cerebro.addanalyzer(SharpeRatio_A, timeframe=tframes[args.tframe], stddev_sample=True)
-        cerebro.addanalyzer(Volatility)
-        cerebro.addanalyzer(Transactions)
-        cerebro.addanalyzer(TradeAnalyzer)
-        cerebro.addanalyzer(DrawDownPerYear)
+    tframes = dict(
+        days=bt.TimeFrame.Days,
+        weeks=bt.TimeFrame.Weeks,
+        months=bt.TimeFrame.Months,
+        years=bt.TimeFrame.Years)
 
-        cerebro.broker.set_fundmode(True)
+    # Add the Analyzers
+    #cerebro.addanalyzer(SQN)
+    cerebro.addanalyzer(TimeReturn, _name='time_return', timeframe=tframes[args.tframe])
+    cerebro.addanalyzer(SharpeRatio_A, timeframe=tframes[args.tframe], stddev_sample=True)
+    cerebro.addanalyzer(Volatility)
+    cerebro.addanalyzer(Transactions)
+    cerebro.addanalyzer(TradeAnalyzer)
+    cerebro.addanalyzer(DrawDownPerYear)
 
-        cerebro.addobserver(CashObserver)
-        cerebro.addobserver(FundObserver)
-        cerebro.addobserver(Trades)
-        cerebro.addobserver(bt.observers.DrawDown)
+    cerebro.broker.set_fundmode(True)
+
+def addObservers(cerebro):
+    cerebro.addobserver(CashObserver)
+    cerebro.addobserver(FundObserver)
+    cerebro.addobserver(bt.observers.TimeReturn)
+    cerebro.addobserver(Trades)
+    cerebro.addobserver(bt.observers.DrawDown)
+
+def runstrategy():
+    args = parse_args()
+    optimize = True
+    # Get the dates from the args
+    fromdate = datetime.datetime.strptime(args.fromdate, '%Y-%m-%d')
+
+    final_results_dict = {}
+
+    symbolDataIndexes = loadSymbols(args.updatePrices, fromdate)
+    symbolDataIndexes = [symbolDataIndexes] if optimize else symbolDataIndexes
+
+    strategies_dict =   {
+                           1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : [2,20,100], 'keep_cash_percentage':[0.1,0.2,0.3], 'symbolsMapper':symbolDataIndexes}},
+                           #1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0.1, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}},
+                           #2:{'strategy':OldStrategyWithETFFencing,'kwargs':{'detailedLog':True}}
+                        }
+
+    for stratKey in strategies_dict:
         
-        st0 = cerebro.run()
-        
-        my_dict = st0[0].analyzers.time_return.get_analysis()
-        annual_returns = [v+1 for _, v in my_dict.items()]
-        #fdict = st0[0].analyzers.time_return_fencing.get_analysis()
-        #fencingreturns = [[v,fdict[v]] for v in fdict if fdict[v] <= -1 ]
-        annualReturn = math.prod(annual_returns)
-        
-        cashWorth = st0[0].cash_addition + args.cash
-        endWorth = round(st0[0].broker.get_value(), 2)
-        PnL = round(endWorth - cashWorth, 2)
-        transactionsList = list(st0[0].analyzers.transactions.get_analysis())
-        years = (transactionsList[-1] - transactionsList[0]).days / 365.25
+        cerebro = bt.Cerebro(optreturn=True, stdstats=False)
+        stkwargs = strategies_dict[stratKey]['kwargs']
 
-        compaund_annual_return = np.power(annualReturn, 1 / years)-1
-        annualReturn = round(compaund_annual_return*100, 2)
-        volatility = round(st0[0].analyzers.volatility.get_analysis()['volatility']*100,2)
-        sharpe = round(st0[0].analyzers.sharperatio_a.get_analysis()['sharperatio'],2)
-        drawDownPercentage = round(st0[0].analyzers.drawdownperyear.get_analysis()['max']['drawdown'],2)
-        drawDownPeriod = round(st0[0].analyzers.drawdownperyear.get_analysis()['max']['len'] / 24,2)
-        drawdownPerYear = st0[0].analyzers.drawdownperyear.get_analysis()['drawDownsPerYear']
+        if optimize:
+            addData(cerebro, args, symbolDataIndexes[0])
+            cerebro.optstrategy(strategies_dict[stratKey]['strategy'], **stkwargs)
+            setCerebroParameters(cerebro, args)
+
+            stResults = cerebro.run(maxcpus=1)
+            
+            for st in stResults:
+                results = getAnalysisResults(st[0], args)
+                print("Optimize %.2F Cash, # Days %d:  Return:%.2F, STD: %.2F, Sharpe: %.2F"%(st[0].p.keep_cash_percentage, st[0].p.number_of_days, results[3], results[4], results[5]))
+        else:    
+            addData(cerebro, args, symbolDataIndexes)
+            cerebro.addstrategy(strategies_dict[stratKey]['strategy'], **stkwargs)
+            setCerebroParameters(cerebro, args)
+            addObservers(cerebro)
+            
+            stResults = cerebro.run(maxcpus=1)
+            
+            results_list = []    
+            results_list.append(getAnalysisResults(stResults[0], args))
+            final_results_dict[strategies_dict[stratKey]['strategy']] = results_list
+            nonexecuted_transactions= validateResults(stResults[0])
+            printResults(final_results_dict)
+            printValidationResults(nonexecuted_transactions)
+
+            if args.plot:
+                    cerebro.plot()
+
+def getAnalysisResults(strategyResult, args):
+    my_dict = strategyResult.analyzers.time_return.get_analysis()
+    annual_returns = [v+1 for _, v in my_dict.items()]
+    annualReturn = math.prod(annual_returns)
+    
+    try:
+        cashWorth = strategyResult.cash_addition + args.cash
+        endWorth = round(strategyResult.broker.get_value(), 2)
+    except BaseException as err:
+        cashWorth = endWorth = 0
+
+    PnL = round(endWorth - cashWorth, 2)
+    transactionsList = list(strategyResult.analyzers.transactions.get_analysis())
+    years = (transactionsList[-1] - transactionsList[0]).days / 365.25
+
+    compaund_annual_return = np.power(annualReturn, 1 / years)-1
+    annualReturn = round(compaund_annual_return*100, 2)
+    volatility = round(strategyResult.analyzers.volatility.get_analysis()['volatility']*100,2)
+    sharpe = round(strategyResult.analyzers.sharperatio_a.get_analysis()['sharperatio'],2)
+    drawDownPercentage = round(strategyResult.analyzers.drawdownperyear.get_analysis()['max']['drawdown'],2)
+    drawDownPeriod = round(strategyResult.analyzers.drawdownperyear.get_analysis()['max']['len'] / 24,2)
+    drawdownPerYear = strategyResult.analyzers.drawdownperyear.get_analysis()['drawDownsPerYear']
+    
+    return [    cashWorth,
+                endWorth,
+                PnL,
+                annualReturn,
+                volatility,
+                sharpe,
+                drawDownPercentage,
+                drawDownPeriod,
+                drawdownPerYear,
+                annual_returns
+            ]
 
 
-        results_list.append([
-            cashWorth,
-            endWorth,
-            PnL,
-            annualReturn,
-            volatility,
-            sharpe,
-            drawDownPercentage,
-            drawDownPeriod,
-            drawdownPerYear,
-            annual_returns
-        ])
-        final_results_dict[strat] = results_list
+def validateResults(strategyResult):
+    # Validate the results
+    trackedorders=[]
+    nonexecuted_transactions = {}
+    for tickerIndex in strategyResult.pastTransactions:
+        transData = strategyResult.pastTransactions[tickerIndex]
+        for transaction in transData['transactions'][0:-1]:
+            res =  [order for order in strategyResult.broker.orders 
+                    if transData['data'] is order.params.data and 
+                    not order.executed.dt is None and
+                    (int(order.executed.dt) == bt.date2num(transaction.transactionDate) or 
+                    int(order.executed.dt) == bt.date2num(transaction.transactionDate + datetime.timedelta(days = 1))) and
+                    abs(order.executed.size) == transaction.amount and 
+                    not order in trackedorders]
+            if len(res) > 0:
+                trackedorders.append(res[0])
+            else:
+                lst = nonexecuted_transactions.setdefault(transData['ticker'], [])
+                lst.append(transaction)
 
-        # Validate the results
-        trackedorders=[]
-        nonexecuted_transactions = {}
-        for tickerIndex in st0[0].pastTransactions:
-            transData = st0[0].pastTransactions[tickerIndex]
-            for transaction in transData['transactions'][0:-1]:
-                res =  [order for order in st0[0].broker.orders 
-                        if transData['data'] is order.params.data and 
-                        not order.executed.dt is None and
-                        (int(order.executed.dt) == bt.date2num(transaction.transactionDate) or 
-                        int(order.executed.dt) == bt.date2num(transaction.transactionDate + datetime.timedelta(days = 1))) and
-                        abs(order.executed.size) == transaction.amount and 
-                        not order in trackedorders]
-                if len(res) > 0:
-                    trackedorders.append(res[0])
-                else:
-                    lst = nonexecuted_transactions.setdefault(transData['ticker'], [])
-                    lst.append(transaction)
+    return nonexecuted_transactions
 
-                #price,size
-
-    # Average results for the different data feeds
-    #arr = np.array(final_results_dict)
-    #final_results_dict = [[int(val) if val.is_integer() else round(val, 2) for val in i] for i in arr.mean(0)]
-
-    printResults(final_results_dict)
-    printValidationResults(nonexecuted_transactions)
-
-    if args.plot:
-            cerebro.plot()
-  
 def printValidationResults(results):
     for ticker in results:
         for transaction in results[ticker]:
@@ -278,7 +303,7 @@ def parse_args():
     parser.add_argument('--fromdate', '-f', default='2017-01-01',
                         help='Starting date in YYYY-MM-DD format')
 
-    parser.add_argument('--todate', '-t', default='2021-12-19',
+    parser.add_argument('--todate', '-t', default='2021-12-31',
                         help='Starting date in YYYY-MM-DD format')
 
     parser.add_argument('--fast_period', default=13, type=int,

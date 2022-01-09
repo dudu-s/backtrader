@@ -8,6 +8,7 @@ class DegiroCommission(bt.CommInfoBase):
         return self.p.flat + abs(size) * self.p.per_share
 
 class PoalimCommission(bt.CommInfoBase):
+    #params = (('per_share', 0.001), ('min', 6.5),)
     params = (('per_share', 0.000), ('min', 0),)
 
     def _getcommission(self, size, price, pseudoexec):
