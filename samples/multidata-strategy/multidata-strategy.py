@@ -28,6 +28,8 @@ import datetime
 import backtrader as bt
 import backtrader.feeds as btfeeds
 import backtrader.indicators as btind
+import os.path  # To manage paths
+import sys  # To find out the script name (in argv[0])
 
 
 class MultiDataStrategy(bt.Strategy):
@@ -165,13 +167,14 @@ def runstrategy():
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MultiData Strategy')
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     parser.add_argument('--data0', '-d0',
-                        default='../../datas/orcl-1995-2014.txt',
+                        default=os.path.join(modpath,'../../datas/orcl-1995-2014.txt'),
                         help='1st data into the system')
 
     parser.add_argument('--data1', '-d1',
-                        default='../../datas/yhoo-1996-2014.txt',
+                        default=os.path.join(modpath,'../../datas/yhoo-1996-2014.txt'),
                         help='2nd data into the system')
 
     parser.add_argument('--fromdate', '-f',

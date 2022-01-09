@@ -201,8 +201,9 @@ def runstrategy():
             cerebro.optstrategy(strategies_dict[stratKey]['strategy'], **stkwargs)
             setCerebroParameters(cerebro, args)
 
-            stResults = cerebro.run(maxcpus=1)
-            
+            now = datetime.datetime.now()
+            stResults = cerebro.run()
+            print("Elapsed Time: %d"%((datetime.datetime.now() - now).seconds))
             for st in stResults:
                 results = getAnalysisResults(st[0], args)
                 print("Optimize %.2F Cash, # Days %d:  Return:%.2F, STD: %.2F, Sharpe: %.2F"%(st[0].p.keep_cash_percentage, st[0].p.number_of_days, results[3], results[4], results[5]))
@@ -212,7 +213,7 @@ def runstrategy():
             setCerebroParameters(cerebro, args)
             addObservers(cerebro)
             
-            stResults = cerebro.run(maxcpus=1)
+            stResults = cerebro.run()
             
             results_list = []    
             results_list.append(getAnalysisResults(stResults[0], args))

@@ -26,7 +26,8 @@ import argparse
 import datetime
 
 import backtrader as bt
-
+import os.path
+import sys
 
 class St(bt.SignalStrategy):
     params = (
@@ -88,7 +89,9 @@ def parse_args(pargs=None):
         )
     )
 
-    parser.add_argument('--data0', default='../../datas/orcl-1995-2014.txt',
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+
+    parser.add_argument('--data0', default=os.path.join(modpath,'../../datas/orcl-1995-2014.txt'),
                         required=False, help='Data to read in')
 
     # Defaults for dates

@@ -27,6 +27,8 @@ import datetime
 import random
 
 import backtrader as bt
+import os.path  # To manage paths
+import sys  # To find out the script name (in argv[0])
 
 
 class TheStrategy(bt.Strategy):
@@ -191,14 +193,15 @@ def runstrat(args=None):
 
 
 def parse_args(pargs=None):
-
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description='Sample for Tharp example with MACD')
 
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+
     # pgroup = parser.add_mutually_exclusive_group(required=True)
     parser.add_argument('--data0', required=False,
-                        default='../../datas/yhoo-1996-2014.txt',
+                        default=os.path.join(modpath,'../../datas/yhoo-1996-2014.txt'),
                         help='Specific data0 to be read in')
 
     parser.add_argument('--fromdate', required=False,

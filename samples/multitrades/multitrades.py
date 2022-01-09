@@ -31,6 +31,8 @@ import backtrader.feeds as btfeeds
 import backtrader.indicators as btind
 
 import mtradeobserver
+import os.path  # To manage paths
+import sys  # To find out the script name (in argv[0])
 
 
 class MultiTradeStrategy(bt.Strategy):
@@ -167,9 +169,10 @@ def runstrategy():
 
 def parse_args():
     parser = argparse.ArgumentParser(description='MultiTrades')
+    modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     parser.add_argument('--data', '-d',
-                        default='../../datas/2006-day-001.txt',
+                        default=os.path.join(modpath,'../../datas/2006-day-001.txt'),
                         help='data to add to the system')
 
     parser.add_argument('--fromdate', '-f',
