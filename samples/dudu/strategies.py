@@ -2,6 +2,7 @@ import math
 
 import datetime #do not delete - for breakpoints
 import backtrader as bt
+from backtrader import broker
 from backtrader.order import Order
 import numpy as np
 
@@ -83,7 +84,7 @@ class OldStrategy(bt.Strategy):
                 self.log('SELL EXECUTED,%.4f, Amount: %.2F, Cost: %.4f, Commission: %.2f' %
                          (order.executed.price*self.p.priceSize,
                           order.executed.size,
-                          order.executed.value*self.p.priceSize,
+                          order.executed.price*order.executed.size*self.p.priceSize,
                           order.executed.comm))
 
             self.bar_executed = len(self)
@@ -128,31 +129,14 @@ class OldStrategy(bt.Strategy):
 
                 # Not yet in the market... we MIGHT BUY if...
                 if trans:
-                    validityDate = bt.num2date(self.datadate[0])+datetime.timedelta(days = 1)
                     if trans.transactionType == 'buy':
-                        self.log('BUY CREATE %s, %.4f, Amount: %.4f, Cost: %.4f' % 
-                                 (metaData['ticker'],
-                                  trans.price * self.p.priceSize,
-                                  trans.amount,
-                                  trans.price * self.p.priceSize * trans.amount))
-                        order = self.buy(exectype=Order.Limit,price=trans.price,size=trans.amount, data=currentData,valid=validityDate)
-                        self.order[currentData] = order
-                        self.signalBuy(trans.price * self.p.priceSize, trans.amount)
+                        self.buyOrder(metaData['ticker'], trans.price, trans.amount, currentData)
                         metaData['transactionIndex'] = metaData['transactionIndex'] + 1
                 
                     elif self.getposition(data=currentData):
                         # Already in the market... we might sell
                         if trans.transactionType == 'sell':
-
-                            self.log('SELL CREATE %s, %.4f, Amount: %.4f, Cost: %.4f' % 
-                                        (metaData['ticker'],
-                                        trans.price * self.p.priceSize,
-                                        trans.amount, 
-                                        trans.price * self.p.priceSize * trans.amount))
-
-                            # Keep track of the created order to avoid a 2nd order
-                            self.order[currentData] = self.sell(exectype=Order.Limit,price=trans.price,size=trans.amount, data=currentData,valid=validityDate)
-                            self.signalSell(trans.price * self.p.priceSize, trans.amount)
+                            self.sellOrder(metaData['ticker'], trans.price, trans.amount, currentData)
                             metaData['transactionIndex'] = metaData['transactionIndex'] + 1
 
         if len(self.data) + 2 == self.data.buflen():
@@ -202,13 +186,114 @@ class OldStrategy(bt.Strategy):
     def getNeededCash(self, cost): 
         return max(0, math.ceil(cost - self.broker.get_cash()))
 
-    def signalBuy(self, price, amount):
-        pass
+    def buyOrder(self, ticker, price, amount, currentData):
 
-    def signalSell(self, price, amount):
-        pass
+        validityDate = bt.num2date(self.datadate[0])+datetime.timedelta(days = 1)
+
+        self.log('BUY CREATE %s, %.4f, Amount: %.4f, Cost: %.4f' % 
+                    (ticker,
+                    price,
+                    amount,
+                    price * amount))
+        order = self.buy(exectype=Order.Limit,price=price,size=amount, data=currentData,valid=validityDate)
+        self.order[currentData] = order
+
+    def sellOrder(self, ticker, price, amount, currentData):
+        
+        validityDate = bt.num2date(self.datadate[0])+datetime.timedelta(days = 1)
+
+        self.log('SELL CREATE %s, %.4f, Amount: %.4f, Cost: %.4f' % 
+                    (ticker,
+                    price,
+                    amount,
+                    price * amount))
+
+        # Keep track of the created order to avoid a 2nd order
+        self.order[currentData] = self.sell(exectype=Order.Limit,price=price,size=amount, data=currentData,valid=validityDate)
+
+class OldStrategyWithTakeProfit(OldStrategy):
+    '''
+    Take profit on specific percentage
+    '''
+    params = dict(priceSize=1,
+                  symbolsMapper=[],
+                  detailedLog=False,
+                  number_of_days=2,
+                  keep_cash_percentage=0.2,
+                  take_profit_percentage=1.5)
+    
+    def __init__(self):
+        super(OldStrategyWithTakeProfit,self).__init__()
+        self.p.take_profit_percentage = self.p.take_profit_percentage + 1
+        self.returnPowerPerData = {}
+        for i in range(0,len(self.datas)):
+            self.returnPowerPerData[i] = 0
+
+    def next(self):
+        super(OldStrategyWithTakeProfit,self).next()
+        result = self.performTakeProfitSell()
+        self.blanceCash(result[0], result[1])
+
+    def performTakeProfitSell(self):
+        i = 0
+        cashToBalance = 0
+        exceptionDatas = {}
+        for data in self.datas:
+            position = self.broker.getposition(data=data)
+            if position.size > 0:
+                change = position.adjbase / position.price / self.returnPercentage(self.returnPowerPerData[i])
+                if change-1 > self.p.take_profit_percentage:
+                    self.log('Percentage increase %s, New power: %.2f' % 
+                        (self.pastTransactions[i]['ticker'],
+                        self.returnPowerPerData[i] + 1
+                        ))
+                
+                    self.returnPowerPerData[i] = self.returnPowerPerData[i] + 1
 
 
+                    for trans in self.pastTransactions[i]['transactions'][self.pastTransactions[i]['transactionIndex']:]:
+                        trans.amount = trans.amount /  self.p.take_profit_percentage
+                
+                    self.sellOrder(self.pastTransactions[i]['ticker'], position.adjbase, position.size / self.p.take_profit_percentage, data)
+                    cashToBalance = cashToBalance + (position.adjbase * position.size / self.p.take_profit_percentage)
+                    exceptionDatas[i] = 0
+            i = i+1
+
+        return [cashToBalance, exceptionDatas]
+
+    def blanceCash(self, cash, exceptionDatas):
+
+        if cash == 0:
+            return
+
+        totalValueToBalance = self.calculateTotalValue(exceptionDatas)
+        
+        i = 0
+        for data in self.datas:
+            if exceptionDatas.get(i) is None:
+                position = self.broker.getposition(data=data)
+                if position.size > 0:
+                    positionValue = position.size * position.adjbase
+                    stockWeight = positionValue / totalValueToBalance
+                    buyCost = stockWeight * cash
+                    amount = int(buyCost / position.adjbase)
+
+                    self.buyOrder(self.pastTransactions[i]['ticker'], position.adjbase, amount, data)
+            i = i+1
+
+    def returnPercentage(self, power):
+        return math.pow(self.p.take_profit_percentage, power)
+
+    def calculateTotalValue(self, exceptionDatas):
+        totalValue = 0
+        i = 0
+        for data in self.datas:
+            if exceptionDatas.get(i) is None:
+                position = self.broker.getposition(data=data)
+                if position.size > 0:
+                    totalValue = totalValue + (position.size * position.adjbase)
+            i = i+1
+        return totalValue
 class OldStrategyWithETFFencing(OldStrategy):
     '''
     Involve fencing with the trade

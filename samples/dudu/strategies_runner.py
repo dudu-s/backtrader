@@ -3,8 +3,11 @@ from __future__ import (absolute_import, division, print_function,
 
 import os.path
 import sys
+import time
 import argparse
 import datetime
+import concurrent.futures
+
 
 from backtrader.analyzers.transactions import Transactions
 from backtrader.functions import Or
@@ -93,7 +96,7 @@ def loadSymbols(updatePrices, fromdate):
                              'MITC.TA', 'GHDX', 'NTGN','JUNO']
     
     
-    tickerStrings = ['ENLV','BMLK.TA']#,'CLGN', 'MTLF.TA']
+    #tickerStrings = ['ICCM.TA','EDIT']#,'CLGN', 'MTLF.TA']
 
     
     dataProviders = {'DNA' : [2,1],
@@ -176,27 +179,29 @@ def addObservers(cerebro):
 
 def runstrategy():
     args = parse_args()
-    optimize = True
+    optimize = False
+    
     # Get the dates from the args
     fromdate = datetime.datetime.strptime(args.fromdate, '%Y-%m-%d')
 
     final_results_dict = {}
 
-    symbolDataIndexes = loadSymbols(args.updatePrices, fromdate)
-    symbolDataIndexes = [symbolDataIndexes] if optimize else symbolDataIndexes
 
-    strategies_dict =   {
-                           1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : [2,20,100], 'keep_cash_percentage':[0.1,0.2,0.3], 'symbolsMapper':symbolDataIndexes}},
+    if optimize:
+        # --------  Optimized mode ----------
+        symbolDataIndexes = [loadSymbols(args.updatePrices, fromdate)]
+        strategies_dict =   {
+                           #1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : [2,20,100], 'keep_cash_percentage':[0.1,0.2,0.3], 'symbolsMapper':symbolDataIndexes}},
+                           2:{'strategy':OldStrategyWithTakeProfit, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'take_profit_percentage' : [0.8,0.9,1,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0]}}
                            #1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0.1, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}},
                            #2:{'strategy':OldStrategyWithETFFencing,'kwargs':{'detailedLog':True}}
                         }
 
-    for stratKey in strategies_dict:
+        for stratKey in strategies_dict:
         
-        cerebro = bt.Cerebro(optreturn=True, stdstats=False)
-        stkwargs = strategies_dict[stratKey]['kwargs']
+            cerebro = bt.Cerebro(optreturn=True, stdstats=False)
+            stkwargs = strategies_dict[stratKey]['kwargs']
 
-        if optimize:
             addData(cerebro, args, symbolDataIndexes[0])
             cerebro.optstrategy(strategies_dict[stratKey]['strategy'], **stkwargs)
             setCerebroParameters(cerebro, args)
@@ -207,23 +212,94 @@ def runstrategy():
             for st in stResults:
                 results = getAnalysisResults(st[0], args)
                 print("Optimize %.2F Cash, # Days %d:  Return:%.2F, STD: %.2F, Sharpe: %.2F"%(st[0].p.keep_cash_percentage, st[0].p.number_of_days, results[3], results[4], results[5]))
-        else:    
-            addData(cerebro, args, symbolDataIndexes)
-            cerebro.addstrategy(strategies_dict[stratKey]['strategy'], **stkwargs)
-            setCerebroParameters(cerebro, args)
-            addObservers(cerebro)
+    else:
+        
+        # --------  Non optimized mode ----------
+        symbolDataIndexes = loadSymbols(args.updatePrices, fromdate)
+        strategies_dict =   {
+                           1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}},
+                           2:{'strategy':OldStrategyWithTakeProfit, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True, 'take_profit_percentage' : 1.5}}
+                           #2:{'strategy':OldStrategyWithETFFencing,'kwargs':{'detailedLog':True}}
+                        }
+        
+        processes = []
+
+        start = time.perf_counter()
+        parallel = True
+
+        if parallel:
             
-            stResults = cerebro.run()
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+
+                for stratKey in strategies_dict:
+                    strategies_dict[stratKey]['kwargs']['detailedLog'] = False
+                    process1 = executor.submit(parallel_strat, args, stratKey, strategies_dict, symbolDataIndexes)
+                    processes.append(process1)
+                    
+                    i = 0
+                for stratKey in strategies_dict:
+                    results = processes[i].result()
+                    final_results_dict[strategies_dict[stratKey]['strategy']] = results[0]
+                    nonexecuted_transactions = results[1]
+
+                    i = i + 1
+
+            end = time.perf_counter()       
+            print(f'Finished in {round(end-start, 2)} second(s)') 
             
-            results_list = []    
-            results_list.append(getAnalysisResults(stResults[0], args))
-            final_results_dict[strategies_dict[stratKey]['strategy']] = results_list
-            nonexecuted_transactions= validateResults(stResults[0])
             printResults(final_results_dict)
             printValidationResults(nonexecuted_transactions)
+        else:
+              
+            cerebro_list = []
+            start = time.perf_counter()
 
+            for stratKey in strategies_dict:
+            
+                cerebro = bt.Cerebro(optreturn=True, stdstats=False)
+                cerebro_list.append(cerebro)
+                stkwargs = strategies_dict[stratKey]['kwargs']
+
+                addData(cerebro, args, symbolDataIndexes)
+                cerebro.addstrategy(strategies_dict[stratKey]['strategy'], **stkwargs)
+                setCerebroParameters(cerebro, args)
+                addObservers(cerebro)
+            
+                stResults = cerebro.run()
+            
+                results_list = []    
+                results_list.append(getAnalysisResults(stResults[0], args))
+                final_results_dict[strategies_dict[stratKey]['strategy']] = results_list
+                nonexecuted_transactions= validateResults(stResults[0])
+        
+            end = time.perf_counter()       
+            print(f'Finished in {round(end-start, 2)} second(s)') 
+        
+            printResults(final_results_dict)
+            printValidationResults(nonexecuted_transactions)
+        
+        
             if args.plot:
-                    cerebro.plot()
+                for c in cerebro_list:
+                    c.plot()
+
+def parallel_strat(args, stratKey, strategies_dict, symbolDataIndexes):
+    cerebro = bt.Cerebro(optreturn=True, stdstats=False)
+    stkwargs = strategies_dict[stratKey]['kwargs']
+
+    addData(cerebro, args, symbolDataIndexes)
+    cerebro.addstrategy(strategies_dict[stratKey]['strategy'], **stkwargs)
+    setCerebroParameters(cerebro, args)
+    addObservers(cerebro)
+            
+    stResults = cerebro.run()
+            
+    results_list = []    
+    results_list.append(getAnalysisResults(stResults[0], args))
+    
+    nonexecuted_transactions= validateResults(stResults[0])
+    return [results_list, nonexecuted_transactions]
+    
 
 def getAnalysisResults(strategyResult, args):
     my_dict = strategyResult.analyzers.time_return.get_analysis()
