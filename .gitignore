@@ -20,6 +20,7 @@ sdist/
 var/
 Transactions/
 Prices/
+OptionsPrices/
 samples/dudu/_backtrader
 *.egg-info/
 .installed.cfg

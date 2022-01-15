@@ -26,6 +26,7 @@ from observers import *
 from analyzers import *
 from transactionsLoader import *
 from GetPrices import *
+from optionsLoader import *
 from backtrader.analyzers.sharpe import SharpeRatio_A
 from strategies import *
 from commissions import *
@@ -96,8 +97,8 @@ def loadSymbols(updatePrices, fromdate):
                              'MITC.TA', 'GHDX', 'NTGN','JUNO']
     
     
-    #tickerStrings = ['ICCM.TA','EDIT']#,'CLGN', 'MTLF.TA']
-
+    #tickerStrings = ['MITC.TA','BMLK.TA','GHDX']#, 'NTGN','JUNO']
+    #'MITC.TA',
     
     dataProviders = {'DNA' : [2,1],
                      'MITC.TA' : [3],
@@ -116,7 +117,7 @@ def loadSymbols(updatePrices, fromdate):
     
     return symbolDataIndexes
 
-def addData(cerebro, args, symbolDatas):
+def addData(cerebro, args, symbolDatas, optionsDatas={}):
     
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
     fencingpath = os.path.join(modpath, args.data + 'XBI' + '.csv')
@@ -135,6 +136,24 @@ def addData(cerebro, args, symbolDatas):
         data.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
         data.plotinfo.plot = False
         cerebro.adddata(data, name=index[0])
+
+    for ticker in optionsDatas:
+        dataframe = OptionsLoader().Load(ticker, 
+                                         fromdate,
+                                         optionsDatas[ticker]['strike'], 
+                                         optionsDatas[ticker]['expirationDate'],
+                                         optionsDatas[ticker]['type'])
+        
+        
+        # Pass it to the backtrader datafeed and add it to the cerebro
+        data = bt.feeds.PandasData( dataname=dataframe,
+                                    fromdate=fromdate,
+                                    todate=todate )
+
+        data.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
+        data.plotinfo.plot = False
+        cerebro.adddata(data, name=ticker+'_option')
+
 
     # Add fencing Data
     fencingData = bt.feeds.YahooFinanceCSVData(
@@ -216,16 +235,20 @@ def runstrategy():
         
         # --------  Non optimized mode ----------
         symbolDataIndexes = loadSymbols(args.updatePrices, fromdate)
+        optionsData = { 'CRTX' : { 'strike' : 60, 'expirationDate' : datetime.date(2021,11,19), 'type' : OptionsLoader.CALL } }
         strategies_dict =   {
-                           1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}},
-                           2:{'strategy':OldStrategyWithTakeProfit, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True, 'take_profit_percentage' : 1.5}}
+                           #1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}, 'optionsData' : {}},
+                           2:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}, 'optionsData' : optionsData},
+                           #2:{'strategy':OldStrategyWithTakeProfit, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True, 'take_profit_percentage' : 1.5}}
                            #2:{'strategy':OldStrategyWithETFFencing,'kwargs':{'detailedLog':True}}
                         }
         
+
+
         processes = []
 
         start = time.perf_counter()
-        parallel = True
+        parallel = False
 
         if parallel:
             
@@ -260,7 +283,7 @@ def runstrategy():
                 cerebro_list.append(cerebro)
                 stkwargs = strategies_dict[stratKey]['kwargs']
 
-                addData(cerebro, args, symbolDataIndexes)
+                addData(cerebro, args, symbolDataIndexes, strategies_dict[stratKey]['optionsData'])
                 cerebro.addstrategy(strategies_dict[stratKey]['strategy'], **stkwargs)
                 setCerebroParameters(cerebro, args)
                 addObservers(cerebro)
@@ -287,7 +310,7 @@ def parallel_strat(args, stratKey, strategies_dict, symbolDataIndexes):
     cerebro = bt.Cerebro(optreturn=True, stdstats=False)
     stkwargs = strategies_dict[stratKey]['kwargs']
 
-    addData(cerebro, args, symbolDataIndexes)
+    addData(cerebro, args, symbolDataIndexes, strategies_dict[stratKey]['optionsData'])
     cerebro.addstrategy(strategies_dict[stratKey]['strategy'], **stkwargs)
     setCerebroParameters(cerebro, args)
     addObservers(cerebro)

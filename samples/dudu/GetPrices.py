@@ -93,6 +93,7 @@ class GenericCSVProviderBuilder(AbstractCSVDataProviderBuilder):
                         self.parseRow(startDate, row, lstData, lstIndex)
                     i = i+1
         
+
         return self.transformToPanda(lstData, lstIndex)
 
 # Data Provider = 2
@@ -306,6 +307,14 @@ class YahooFinancePricesBuilder:
                             self.printRow( dataFrame, dataIndex, startTime, multiplier, low_multiplier, high_multiplier, rowsperday)
                 
                         startDate = startDate if len(dataFrame['Open']) == 0 else startTime + datetime.timedelta(days = 1)
+
+                # Fill the data for the last rows until now
+                if not dataFrame.empty:
+                    delta = (datetime.datetime.now() - startDate).days
+                    for day in range (0,delta):
+                        startTime = startDate + datetime.timedelta(days=day)
+                        self.printRow( dataFrame, dataIndex, startTime, multiplier, low_multiplier, high_multiplier, rowsperday)
+
                 sys.stdout = original_stdout
         except BaseException as err:
             sys.stdout = original_stdout
@@ -335,6 +344,8 @@ if __name__ == '__main__':
                     'MU','NTGN','NFLX','ORBK','QCOM','RWLK','SGMO','TTWO','TSLA','TEVA','UPS','URGN','ENLV.TA','TEVA.TA','PSTI.TA']
     '''
     #tickerStrings = ['ICCM.TA']
+
+
 
     # For testing purposes only!
     YahooFinancePricesBuilder().BuildFile('DNA',datetime.datetime.strptime('2016-12-31', '%Y-%m-%d'),providers=[2,1])
