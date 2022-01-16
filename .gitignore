@@ -21,6 +21,7 @@ var/
 Transactions/
 Prices/
 OptionsPrices/
+OptionsTransactions/
 samples/dudu/_backtrader
 *.egg-info/
 .installed.cfg

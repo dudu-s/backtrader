@@ -22,13 +22,19 @@ class PastTransaction:
 
 class TransactionsLoader:
 
-    def Load(self, symbol):
+    def Load(self, symbol, option=False):
         transactions_ = []
         modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-        datapath = os.path.join(modpath, '../../Transactions')
+
+        if option:
+            datapath = os.path.join(modpath, '../../OptionsTransactions')
+            filepath = os.path.join(datapath,symbol+"_OPTION")  + '.csv'
+        else:
+            datapath = os.path.join(modpath, '../../Transactions')
+            filepath = os.path.join(datapath,symbol)  + '.csv'
 
         header = True
-        with open(os.path.join(datapath,symbol)  + '.csv', newline='') as csvfile:
+        with open(filepath, newline='') as csvfile:
             spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
             for row in spamreader:
                 if header == False:

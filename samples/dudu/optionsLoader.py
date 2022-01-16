@@ -24,8 +24,8 @@ class OptionsLoader:
             spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
             for row in spamreader:
                 if header == False:
-                    tradeDate   = datetime.datetime.strptime(row[1],'%Y-%m-%d')
-                    expirDate   = datetime.datetime.strptime(row[2],'%Y-%m-%d').date()
+                    tradeDate   = self.getdate(row[1])
+                    expirDate   = self.getdate(row[2]).date()
                     dte         = row[3]
                     strike      = float(row[4])
                     stockPrice  = row[5]
@@ -63,7 +63,12 @@ class OptionsLoader:
             self.addData(lstData, lstIndex, 0, 0, startTime, rowsperday)
 
         return self.transformToPanda(lstData, lstIndex)
-    
+    def getdate(self, date):
+        try:
+            datetoreturn = datetime.datetime.strptime(date,'%Y-%m-%d')
+        except:
+                datetoreturn = datetime.datetime.strptime(date,'%d/%m/%Y')
+        return datetoreturn
     def transformToPanda(self, lstData, lstIndex):
         df_list = list()
         df_list.clear()

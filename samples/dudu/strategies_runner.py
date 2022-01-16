@@ -125,35 +125,37 @@ def addData(cerebro, args, symbolDatas, optionsDatas={}):
     todate = datetime.datetime.strptime(args.todate, '%Y-%m-%d')
 
     for index in symbolDatas:
-        datapath = os.path.join(modpath, args.data + index[0] + '.csv')
-        data = bt.feeds.YahooFinanceCSVData(
-            dataname=datapath,
-            fromdate=fromdate,
-            todate=todate,
+        if optionsDatas.get(index[0]) is None:
+            datapath = os.path.join(modpath, args.data + index[0] + '.csv')
+            data = bt.feeds.YahooFinanceCSVData(
+                dataname=datapath,
+                fromdate=fromdate,
+                todate=todate,
                 
-        )
+            )
 
-        data.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
-        data.plotinfo.plot = False
-        cerebro.adddata(data, name=index[0])
+            data.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
+            data.plotinfo.plot = False
+            cerebro.adddata(data, name=index[0])
+        else:
+            ticker = index[0]
+            index[1] = TransactionsLoader().Load(ticker, True)
 
-    for ticker in optionsDatas:
-        dataframe = OptionsLoader().Load(ticker, 
+            dataframe = OptionsLoader().Load(ticker, 
                                          fromdate,
                                          optionsDatas[ticker]['strike'], 
                                          optionsDatas[ticker]['expirationDate'],
                                          optionsDatas[ticker]['type'])
         
         
-        # Pass it to the backtrader datafeed and add it to the cerebro
-        data = bt.feeds.PandasData( dataname=dataframe,
-                                    fromdate=fromdate,
-                                    todate=todate )
+            # Pass it to the backtrader datafeed and add it to the cerebro
+            data = bt.feeds.PandasData( dataname=dataframe,
+                                        fromdate=fromdate,
+                                        todate=todate )
 
-        data.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
-        data.plotinfo.plot = False
-        cerebro.adddata(data, name=ticker+'_option')
-
+            data.addfilter(CalendarDays, fill_price=0, fill_vol=1000000)
+            data.plotinfo.plot = False
+            cerebro.adddata(data, name=ticker+'_option')
 
     # Add fencing Data
     fencingData = bt.feeds.YahooFinanceCSVData(
