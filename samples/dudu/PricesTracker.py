@@ -1,69 +1,165 @@
 from time import strftime, strptime
 from numpy import unicode_
+from pandas.core.base import NoNewAttributesMixin
 import yfinance as yf
 import sys
 import os
+import numpy
+import csv
 import datetime
 import pandas as pd
+import matplotlib.pyplot as plt
+from operator import mul
 
 
 
-class AbstractDataProviderBuilder:
-    def getData(self, ticker, startDate):
-        pass
 
-    def transformToPanda(self, lstData, lstIndex):
-        df_list = list()
-        df_list.clear()
+class CacheData:
+    path = 'cache.csv'
+    data = dict()
     
-        data = pd.DataFrame(lstData, index=lstIndex, columns =['Open','High','Low','Close','Adj Close','Volume'])
-        df_list.append(data)
-        return df_list
+
+    def add(self, date, ticker, price):
+        self.data[date.strftime("%Y-%m-%d")+"@"+ticker] = price
+
+    def get(self, date, ticker):
+        return self.data.get(date.strftime("%Y-%m-%d")+"@"+ticker, None)
+
+    def load(self):
+
+        if not os.path.exists(self.path):
+            self.write({})
+
+        with open(self.path, newline='') as csvfile:
+            spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
+            for row in spamreader:
+                date   = row[0]
+                ticker   = row[1]
+                price         = float(row[2])
+                    
+                self.data[date+"@"+ticker] = price
+                    
+    def write(self):
+        original_stdout = sys.stdout # Save a reference to the original standard output
+
+        # Save the files
+
+        sortedData = dict(sorted(self.data.items(), key=lambda item: item[0].split("@")[0]))
+            
         
 
-class AbstractCSVDataProviderBuilder(AbstractDataProviderBuilder):
-    filepath : str
+        with open(self.path, 'w') as f:
+            sys.stdout = f # Change the standard output to the file we created.
 
-    def __init__(self):
-        super(AbstractCSVDataProviderBuilder, self).__init__()
-        self.filepath = "C:/PythonScripts/Projects/BackTrader/ExternalDataSources"
+            for priceInfo in sortedData:
+                x = priceInfo.split("@")
+                print("%s,%s,%s"%(x[0],x[1],self.data[priceInfo]))
 
-    def getData(self, ticker, startDate):
-        pass
+        sys.stdout = original_stdout
 
+    def calculateDailyReturn(self, tickers, enddate):
+        sortedData = dict(sorted(self.data.items(), key=lambda item: item[0].split("@")[0]))
+        x = []
+        y = []
+        prices1 = {}
+        prices2 = {}
+        weight = 1 / len(tickers)
+        date = datetime.datetime.now()
 
-# Data Provider = 1
-class YahooDataProviderBuilder(AbstractDataProviderBuilder):
-    def getData(self, ticker, startDate,exactday=False):
+        for itemInfo in sortedData:
+            item = itemInfo.split("@")
+            #if datetime.datetime.strptime(item[0], "%Y-%m-%d") >= enddate:
+             #   break
+            
+            if (date !=  item[0]):
+                if len(prices1) > 0:
 
-        orig_stdout = sys.stdout
-        sys.stdout=open('log.txt','w')
+                    if len(prices2) > 0:
+                        i = 0
 
-        df_list = list()
-        df_list.clear()
+                        x.append(date)
+                        y.append(round(sum([(prices1[p1] / prices2[p1] - 1) * weight for p1 in prices1 if p1 in prices2]) * 100,5))
+                        
 
-        if exactday:
-            enddate = startDate + datetime.timedelta(days=1)
-        else:
-            enddate = datetime.datetime.now()
-        data = yf.download(ticker, group_by="Ticker", start=startDate.strftime("%Y-%m-%d"), end=enddate.strftime("%Y-%m-%d"), interval="1d")
+                    prices2 = prices1
+                    prices1 = {}
+                
+            date = item[0]
+            
+            if item[1] in tickers:
+                prices1[item[1]] = sortedData[itemInfo]
 
-        df_list.append(data)
+        if len(prices2) > 0: 
+            x.append(date)
+            y.append(round(sum([(prices1[p1] / prices2[p1] - 1) * weight for p1 in prices1 if p1 in prices2]) * 100,5))
 
-        sys.stdout.close()
-        sys.stdout=orig_stdout 
+        return [x,y]
 
-        return df_list
 
 
 
 class YahooFinancePricesTracker:
-    providers_types= {1: YahooDataProviderBuilder}
+    tickers = []
+
+    def __init__(self):
+        self.cacheddata = CacheData()
+        self.cacheddata.load()
+
+    def loadPeriodData(self, ticker, startDate, endDate):
+        endDate = endDate - datetime.timedelta(days=1)
+        prices = dict()
+        price = None
+        delta = (endDate - startDate).days + 1
+        date = startDate
+        day = 0
+        
+        # Where cache ends
+        while not self.cacheddata.get(date, ticker) is None and day <= delta:
+            date = startDate + datetime.timedelta(days = day)
+            day = day + 1
+
+        if date < endDate:
+            data  = self.downloadData(ticker, date, endDate)
+            
+            i = 0
+            for i in range(len(data.Close)):
+                price = round(data.Close[i],2)
+                date = data.Close.index[i]
+                self.cacheddata.add(date, ticker, price)
+
+    def getLastValidPrice(self, ticker, startDate):
+        price = self.getSingleDayPrice(ticker, startDate)
+        maxdays = 5
+        i = 0
+        while (price is None and i < maxdays):
+            price = self.getSingleDayPrice(ticker, startDate - datetime.timedelta(days=i))
+            i = i + 1
+
+        return price
+
+    def getSingleDayPrice(self, ticker, startDate):
+        price = None
+        price = self.cacheddata.get(startDate, ticker)
+
+        if price is None:
+            data = self.downloadData(ticker, startDate, startDate+datetime.timedelta(days=1))
+            if (len(data.Close > 0)):
+                price = round(data.Close[-1],2)
+    
+        return price
+
+    def downloadData(self, ticker, startDate, enddate):
+        orig_stdout = sys.stdout
+        sys.stdout=open('log.txt','w')
+        data = yf.download(ticker, group_by="Ticker", start=startDate, end=enddate, interval="1d")
+        sys.stdout.close()
+        sys.stdout=orig_stdout 
+        return data
 
 
-    def PrintResults(self, tickers, detailed=False):
-        providers=[1]
-        startDate = datetime.datetime.now() - datetime.timedelta(days = 3)
+    def PrintResults(self, tickers, enddate, detailed=False, plot=True):
+        self.tickers = tickers
+        startDate = enddate - datetime.timedelta(days = 3)
 
         df_list = list()
         df_list.clear()
@@ -78,27 +174,12 @@ class YahooFinancePricesTracker:
             for tickerInfo in tickers:
                 ticker = tickerInfo['ticker']
 
-
-                for provider in providers:
-                    lst = self.providers_types[provider]().getData(ticker, startDate)
-                    df_list.append(lst)
-                dataIndex = 0
-
-                
-                dataFrame = df_list[-1][-1]
-                dataIndex = max(dataFrame['Open'].index)
-                closePrice = round(dataFrame['Close'][dataIndex],2)
-                
-                for provider in providers:
-                    lst = self.providers_types[provider]().getData(ticker, tickerInfo['StartDate'], True)
-                    df_list.append(lst)
-                dataFrame = df_list[-1][-1]
-                dataIndex = max(dataFrame['Open'].index)
-                refPrice = round(dataFrame['Close'][dataIndex],2)
-                
+                self.loadPeriodData(ticker, startDate, enddate)
+                closePrice = self.getLastValidPrice(ticker, enddate-datetime.timedelta(days=1))
+                refPrice = self.getSingleDayPrice(ticker, tickerInfo['StartDate'])
                 
                 percentage = round((closePrice / refPrice - 1) * 100,3) 
-                days = (datetime.datetime.now() - tickerInfo['StartDate']).days
+                days = (enddate - tickerInfo['StartDate']).days
                 average = weight * percentage + average
                 
                 if len(ticker) < 8:
@@ -114,24 +195,53 @@ class YahooFinancePricesTracker:
                 print ("Ticker\t\tPrice\tStart Price\tDest Price\tPercentage\tDays")
                 for line in lines:
                     print(line)
-
+            
             print ('')
             print (' ------------------ ')
             print ('Average: %s' %(round(average,2)) )
 
-                
+            self.cacheddata.write()
         except BaseException as err:
             print(f"Unexpected {err=}, {type(err)=}")
             print("Error with: ", ticker)
 
     
+def plotPricesTracker(p1, p2, enddate):
+    i = 0
+    data1 = p1.cacheddata.calculateDailyReturn([ticker['ticker'] for ticker in p1.tickers], enddate)
+    data2 = p2.cacheddata.calculateDailyReturn([ticker['ticker'] for ticker in p2.tickers], enddate)
+
+
+    fig, (ax1, ax2) = plt.subplots(2)
+    
+    fig.suptitle('Vertically stacked subplots')
+
+    ax1.plot(data1[0], data1[1], label='Excellance')
+    ax1.plot(data2[0], data2[1], label='HealthCare')
+    ax1.legend()
+    ax1.set_title('Daily Returns')
+
+    y1 = []
+    y2 = []
+    product1, product2 = (1,1)
+    for i in range(len(data1[1])):
+        product1 = product1 * (data1[1][i] / 100 + 1)
+        product2 = product2 * (data2[1][i] / 100 + 1)
+        y1.append(round((product1 - 1) * 100,5))
+        y2.append(round((product2 - 1) * 100,5))
+
+    ax2.plot(data1[0], y1, label='Excellance')
+    ax2.plot(data2[0], y2, label='HealthCare')
+    ax2.legend()
+    ax2.set_title('Period Returns')
+    fig.tight_layout(pad=1.0)
+    plt.show()
 
 if __name__ == '__main__':
 
     
     
-    tickers1 = [{'ticker':'MSFT', 'DestPrice':350, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}, 
-               {'ticker':'TSM', 'DestPrice':160, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+    tickers1 = [{'ticker':'TSM', 'DestPrice':160, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
                {'ticker':'QCom', 'DestPrice':250, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
                {'ticker':'MSFT', 'DestPrice':365, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
                {'ticker':'GOOG', 'DestPrice':3500, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
@@ -164,10 +274,21 @@ if __name__ == '__main__':
                {'ticker':'ICCM.TA', 'DestPrice':1561.99, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
                ]
 
-    #tickers2 = [{'ticker':'WILK.TA', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
+    #lst = [ticker['ticker'] for ticker in tickers2]
+    #YahooFinancePricesTracker().getPeriodData('ASML', datetime.datetime.strptime('2022-03-01', '%Y-%m-%d'), datetime.datetime.strptime('2022-03-02', '%Y-%m-%d'))
+
+    #tickers1 = [{'ticker':'WILK.TA', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
+
+    enddate = datetime.datetime.now()
+    if enddate.weekday() >= 5:
+        enddate = enddate - datetime.timedelta(days = enddate.weekday() - 4)
 
     # For testing purposes only!
-    YahooFinancePricesTracker().PrintResults(tickers1, False)
-    YahooFinancePricesTracker().PrintResults(tickers2, False)
+    yf1 = YahooFinancePricesTracker()
+    yf2 = YahooFinancePricesTracker()
+    yf1.PrintResults(tickers1, enddate, False)
+    yf2.PrintResults(tickers2, enddate, False)
+
+    plotPricesTracker(yf1,yf2, enddate)
 
     
