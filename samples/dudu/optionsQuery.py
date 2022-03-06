@@ -3,6 +3,7 @@ import sys
 import csv
 import os
 import datetime
+import time
 
 # ORATS:
 # https://docs.orats.io/data-explorer/index.html
@@ -22,7 +23,7 @@ def queryOptions(tickerStrings, fromdate, todate):
     # Find last active date
     lastActiveDate = GetFileLastDate(path, tickerStrings, fieldsStr)
     if lastActiveDate != None: 
-        fromdate = (datetime.datetime.strptime(lastActiveDate,'%Y-%m-%d') + datetime.timedelta(days = 1)).date()
+        fromdate = (getdate(lastActiveDate) + datetime.timedelta(days = 1)).date()
 
     delta = (todate - fromdate).days
 
@@ -36,41 +37,54 @@ def queryOptions(tickerStrings, fromdate, todate):
 
         tradedates = '&tradeDate='+ date.strftime('%Y-%m-%d')
 
+        i = 0
+        j=0
         # Build the tickers string
-        tickers = '&ticker='
-        for ticker in tickerStrings:
-            tickers = tickers + ticker + ','
-        tickers = tickers[:-1]
-    
-        try:
-            # Get the data from the API
-            url = baseurl + token + tickers + tradedates + dte + fields
-            resp = requests.get(url=url)
-            data = resp.json() # Check the JSON Response Content documentation below
-            if resp.status_code != 200:
-               continue
-            for line in data['data']:
-                tickersData[line['ticker']] = tickersData.get(line['ticker'], [])
-        
-                lineStr = ""
-                for field in fieldsStr.split(","):
-                    lineStr=lineStr+str(line[field])+','
-                tickersData[line['ticker']].append(lineStr[:-1])
-        
-        except BaseException as err:
-            print(f"Unexpected {err=}, {type(err)=}")
-            print("Error with: ", date.strftime('%Y-%m-%d'))
+        #tickers = '&ticker='
+        tickersarr = []
+        tickersarr.append('&ticker=')
 
-            # Remove all the current date lines
-            for ticker in tickersData:
-                while(tickersData[ticker][len(tickersData[ticker])-1][5:15] == date.strftime('%Y-%m-%d')):
-                    tickersData[ticker].pop()
-            
-            saveToFiles(tickersData, path)
-            removeEmptyFiles(path, fieldsStr)
-            pass
+        for ticker in tickerStrings:
+            if i==10:
+                tickersarr[j] = tickersarr[j][:-1]
+                i=0
+                j=j+1
+                tickersarr.append('&ticker=')
+            tickersarr[j] = tickersarr[j] + ticker + ','
+            i = i+1
+
+        tickersarr[j] = tickersarr[j][:-1]
+    
+        for tickers in tickersarr:
+            try:
+                # Get the data from the API
+                url = baseurl + token + tickers + tradedates + dte + fields
+                resp = requests.get(url=url)
+                data = resp.json() # Check the JSON Response Content documentation below
+                if resp.status_code != 200:
+                   continue
+                for line in data['data']:
+                    tickersData[line['ticker']] = tickersData.get(line['ticker'], [])
         
-        print ('Saving %s'%(date.strftime('%Y-%m-%d')))
+                    lineStr = ""
+                    for field in fieldsStr.split(","):
+                        lineStr=lineStr+str(line[field])+','
+                    tickersData[line['ticker']].append(lineStr[:-1])
+        
+            except BaseException as err:
+                print(f"Unexpected {err=}, {type(err)=}")
+                print("Error with: ", date.strftime('%Y-%m-%d'))
+
+                # Remove all the current date lines
+                for ticker in tickersData:
+                    while(tickersData[ticker][len(tickersData[ticker])-1][5:15] == date.strftime('%Y-%m-%d')):
+                        tickersData[ticker].pop()
+            
+                saveToFiles(tickersData, path)
+                removeEmptyFiles(path, fieldsStr)
+                raise
+        
+            print ('Saving %s'%(date.strftime('%Y-%m-%d')))
 
     saveToFiles(tickersData, path)
     removeEmptyFiles(path, fieldsStr)
@@ -89,7 +103,7 @@ def GetFileLastDate(path, tickerStrings, fieldsStr):
                         i = i+1
                 
                     if i > 1:
-                        lastDate = row[1] if lastDate is None or datetime.datetime.strptime(row[1],'%Y-%m-%d') > datetime.datetime.strptime(lastDate,'%Y-%m-%d') else lastDate
+                        lastDate = row[1] if lastDate is None or getdate(row[1]) > getdate(lastDate) else lastDate
             else:
                 with open(filePath, 'w+') as f:
                     sys.stdout = f # Change the standard output to the file we created.
@@ -121,32 +135,65 @@ def removeEmptyFiles(path, fieldsStr):
             os.remove(filePath)
 
 
+def getdate(date):
+        try:
+            datetoreturn = datetime.datetime.strptime(date,'%Y-%m-%d')
+        except:
+                datetoreturn = datetime.datetime.strptime(date,'%d/%m/%Y')
+        return datetoreturn
+
+def runFunc(tickerStrings, fromdate, todate, iteration=0):
+    try:
+        queryOptions(tickerStrings, fromdate, todate)
+    except:
+        if iteration < 5:
+            time.sleep(30)
+            runFunc(tickerStrings, fromdate, todate, iteration+1)
 
 if __name__ == '__main__':
 
     tickerStrings = ['ALCRB.PA', 'CRTX', 'CLGN', 'ENLV', 'PHGE', 'EDIT', 'MTLF.TA', 
-                                'BMLK.TA', 'ICCM.TA', 'MDWD', 'EXAS', 'MITC', 'ENTX', 'DNA', 
+                                'BMLK.TA', 'ICCM.TA', 'DNA', 'MDWD', 'EXAS', 'MITC', 'ENTX',  
                                 'PHGE.TA', 'RCEL', 'NXFR.TA', 'AVH.AX', 'BYND', 'BVXV', 
                                  'RWLK', 'SGMO', 'URGN', 'ENLV.TA', 'PSTI.TA','NXGN.TA',
                                  'MITC.TA', 'GHDX', 'NTGN','JUNO']
-    #tickerStrings = ['AAPL','IBM']
+
     
+    #tickerStrings = ['DNA']
+    
+    '''
+    print('Starting 2017')
     fromdate=datetime.date(2017,1,1)
     todate=datetime.date(2017,12,31)
-    queryOptions(tickerStrings, fromdate, todate)
+    try:
+        queryOptions(tickerStrings, fromdate, todate)
+    except:
+        time.sleep(5)
+        queryOptions(tickerStrings, fromdate, todate)
+    
+    print('Finished 2017')
+    '''
+    print('Starting 2017')
+    runFunc(tickerStrings, datetime.date(2017,1,1), datetime.date(2017,12,31))
+    print('Finished 2017')
 
-    fromdate=datetime.date(2018,1,1)
-    todate=datetime.date(2018,12,31)
-    queryOptions(tickerStrings, fromdate, todate)
+    print('Starting 2018')
+    runFunc(tickerStrings, datetime.date(2018,1,1), datetime.date(2018,12,31))
+    print('Finished 2018')
+    
+    print('Starting 2019')
+    runFunc(tickerStrings, datetime.date(2019,1,1), datetime.date(2019,12,31))
+    print('Finished 2019')
 
-    fromdate=datetime.date(2019,1,1)
-    todate=datetime.date(2019,12,31)
-    queryOptions(tickerStrings, fromdate, todate)
+    print('Starting 2020')
+    runFunc(tickerStrings, datetime.date(2020,1,1), datetime.date(2020,12,31))
+    print('Finished 2020')
 
-    fromdate=datetime.date(2020,1,1)
-    todate=datetime.date(2020,12,31)
-    queryOptions(tickerStrings, fromdate, todate)
+    print('Starting 2021')
+    runFunc(tickerStrings, datetime.date(2021,1,1), datetime.date(2021,12,31))
+    print('Finished 2021')
 
-    fromdate=datetime.date(2021,1,1)
-    todate=datetime.date(2021,12,31)
-    queryOptions(tickerStrings, fromdate, todate)
+    print('Starting 2022')
+    runFunc(tickerStrings, datetime.date(2022,1,1), datetime.date(2022,1,22))
+    print('Finished 2022')
+    name = 5

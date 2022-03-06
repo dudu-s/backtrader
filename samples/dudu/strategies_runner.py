@@ -59,7 +59,7 @@ def printResults(final_results_dict):
 
     zeroOnce = False
     for key in final_results_dict:
-        lines[headerKey]                = lines[headerKey] + key.__name__ + '\t\t'
+        lines[headerKey]                = lines[headerKey] + key + '\t\t'
         lines[underlineKey]             = lines[underlineKey] + '-----------\t\t'
         lines[startWorthKey]            = lines[startWorthKey] + '%.2F\t\t'% (final_results_dict[key][0][0])
         lines[endWorthKey]              = lines[endWorthKey] + '%.2F\t\t'% (final_results_dict[key][0][1])
@@ -212,8 +212,8 @@ def runstrategy():
         # --------  Optimized mode ----------
         symbolDataIndexes = [loadSymbols(args.updatePrices, fromdate)]
         strategies_dict =   {
-                           #1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : [2,20,100], 'keep_cash_percentage':[0.1,0.2,0.3], 'symbolsMapper':symbolDataIndexes}},
-                           2:{'strategy':OldStrategyWithTakeProfit, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'take_profit_percentage' : [0.8,0.9,1,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0]}}
+                           #1:{'Alias' : 'OldStrategy', 'strategy':OldStrategy, 'kwargs':{'number_of_days' : [2,20,100], 'keep_cash_percentage':[0.1,0.2,0.3], 'symbolsMapper':symbolDataIndexes}},
+                           2:{'Alias' : 'OldStrategyWithTakeProfit', 'strategy':OldStrategyWithTakeProfit, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'take_profit_percentage' : [0.8,0.9,1,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0]}}
                            #1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0.1, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}},
                            #2:{'strategy':OldStrategyWithETFFencing,'kwargs':{'detailedLog':True}}
                         }
@@ -239,8 +239,8 @@ def runstrategy():
         symbolDataIndexes = loadSymbols(args.updatePrices, fromdate)
         optionsData = { 'CRTX' : { 'strike' : 60, 'expirationDate' : datetime.date(2021,11,19), 'type' : OptionsLoader.CALL } }
         strategies_dict =   {
-                           #1:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}, 'optionsData' : {}},
-                           2:{'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}, 'optionsData' : optionsData},
+                           1:{'Alias': 'OldStrategy', 'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}, 'optionsData' : {}},
+                           #2:{'Alias': 'OldStrategy Options', 'strategy':OldStrategy, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True}, 'optionsData' : optionsData},
                            #2:{'strategy':OldStrategyWithTakeProfit, 'kwargs':{'number_of_days' : 2, 'keep_cash_percentage':0, 'symbolsMapper':symbolDataIndexes, 'detailedLog':True, 'take_profit_percentage' : 1.5}}
                            #2:{'strategy':OldStrategyWithETFFencing,'kwargs':{'detailedLog':True}}
                         }
@@ -264,7 +264,7 @@ def runstrategy():
                     i = 0
                 for stratKey in strategies_dict:
                     results = processes[i].result()
-                    final_results_dict[strategies_dict[stratKey]['strategy']] = results[0]
+                    final_results_dict[strategies_dict[stratKey]['Alias']] = results[0]
                     nonexecuted_transactions = results[1]
 
                     i = i + 1
@@ -294,7 +294,7 @@ def runstrategy():
             
                 results_list = []    
                 results_list.append(getAnalysisResults(stResults[0], args))
-                final_results_dict[strategies_dict[stratKey]['strategy']] = results_list
+                final_results_dict[strategies_dict[stratKey]['Alias']] = results_list
                 nonexecuted_transactions= validateResults(stResults[0])
         
             end = time.perf_counter()       

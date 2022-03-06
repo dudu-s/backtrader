@@ -232,7 +232,7 @@ class OldStrategyWithTakeProfit(OldStrategy):
     def next(self):
         super(OldStrategyWithTakeProfit,self).next()
         result = self.performTakeProfitSell()
-        self.blanceCash(result[0], result[1])
+        #self.blanceCash(result[0], result[1])
 
     def performTakeProfitSell(self):
         i = 0

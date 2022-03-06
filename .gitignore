@@ -21,11 +21,14 @@ var/
 Transactions/
 Prices/
 OptionsPrices/
+OptionsPrices_full_backup/
 OptionsTransactions/
 samples/dudu/_backtrader
 *.egg-info/
 .installed.cfg
 *.egg
+log.txt
+cache.csv
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
