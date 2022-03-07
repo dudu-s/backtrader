@@ -28,7 +28,7 @@ class CacheData:
     def load(self):
 
         if not os.path.exists(self.path):
-            self.write({})
+            self.write()
 
         with open(self.path, newline='') as csvfile:
             spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
@@ -157,9 +157,9 @@ class YahooFinancePricesTracker:
         return data
 
 
-    def PrintResults(self, tickers, enddate, detailed=False, plot=True):
+    def PrintResults(self, tickers, startDate, enddate, detailed=False, plot=True):
         self.tickers = tickers
-        startDate = enddate - datetime.timedelta(days = 3)
+        #startDate = enddate - datetime.timedelta(days = 3)
 
         df_list = list()
         df_list.clear()
@@ -206,35 +206,41 @@ class YahooFinancePricesTracker:
             print("Error with: ", ticker)
 
     
-def plotPricesTracker(p1, p2, enddate):
+def plotPricesTracker(yfs, enddate):
     i = 0
-    data1 = p1.cacheddata.calculateDailyReturn([ticker['ticker'] for ticker in p1.tickers], enddate)
-    data2 = p2.cacheddata.calculateDailyReturn([ticker['ticker'] for ticker in p2.tickers], enddate)
-
-
+    data = []
+    yaxis = []
+    products = []
     fig, (ax1, ax2) = plt.subplots(2)
-    
+
     fig.suptitle('Vertically stacked subplots')
+       # yfs = [{'yf':yf1, 'Text':'Excellence'},
+    
+    
+    for p in yfs:
+        data.append(p['yf'].cacheddata.calculateDailyReturn([ticker['ticker'] for ticker in p['yf'].tickers], enddate))
+        ax1.plot(data[-1][0], data[-1][1], label=p['Text'])
+        ax1.legend()
+        ax1.set_title('Daily Returns')
+        products.append(1)
+        yaxis.append([])
+    
+    
+    dataIndex = 0
+    for dataIndex in range(len(yfs)):
+        for i in range(len(data[dataIndex][1])):
+            products[dataIndex] = products[dataIndex] * (data[dataIndex][1][i] / 100 + 1)
+            yaxis[dataIndex].append(round((products[dataIndex] - 1) * 100,5))
 
-    ax1.plot(data1[0], data1[1], label='Excellance')
-    ax1.plot(data2[0], data2[1], label='HealthCare')
-    ax1.legend()
-    ax1.set_title('Daily Returns')
 
-    y1 = []
-    y2 = []
-    product1, product2 = (1,1)
-    for i in range(len(data1[1])):
-        product1 = product1 * (data1[1][i] / 100 + 1)
-        product2 = product2 * (data2[1][i] / 100 + 1)
-        y1.append(round((product1 - 1) * 100,5))
-        y2.append(round((product2 - 1) * 100,5))
+    dataIndex = 0
+    for dataIndex in range(len(yfs)):
+        ax2.plot(data[dataIndex][0], yaxis[dataIndex], label=yfs[dataIndex]['Text'])
+        ax2.legend()
+        ax2.set_title('Period Returns')
+        fig.tight_layout(pad=1.0)
 
-    ax2.plot(data1[0], y1, label='Excellance')
-    ax2.plot(data2[0], y2, label='HealthCare')
-    ax2.legend()
-    ax2.set_title('Period Returns')
-    fig.tight_layout(pad=1.0)
+    
     plt.show()
 
 if __name__ == '__main__':
@@ -274,21 +280,32 @@ if __name__ == '__main__':
                {'ticker':'ICCM.TA', 'DestPrice':1561.99, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
                ]
 
+    tickers3 = [{'ticker':'VLO', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}, 
+               {'ticker':'TTE', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+               {'ticker':'AMCR', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
     #lst = [ticker['ticker'] for ticker in tickers2]
     #YahooFinancePricesTracker().getPeriodData('ASML', datetime.datetime.strptime('2022-03-01', '%Y-%m-%d'), datetime.datetime.strptime('2022-03-02', '%Y-%m-%d'))
 
     #tickers1 = [{'ticker':'WILK.TA', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
 
     enddate = datetime.datetime.now()
+    startdate = datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')
     if enddate.weekday() >= 5:
         enddate = enddate - datetime.timedelta(days = enddate.weekday() - 4)
 
     # For testing purposes only!
     yf1 = YahooFinancePricesTracker()
     yf2 = YahooFinancePricesTracker()
-    yf1.PrintResults(tickers1, enddate, False)
-    yf2.PrintResults(tickers2, enddate, False)
+    yf3 = YahooFinancePricesTracker()
 
-    plotPricesTracker(yf1,yf2, enddate)
+    yf1.PrintResults(tickers1, startdate, enddate, False)
+    yf2.PrintResults(tickers2, startdate, enddate, False)
+    yf3.PrintResults(tickers3, startdate, enddate, False)
+
+    yfs = [{'yf':yf1, 'Text':'Excellence'},
+           {'yf':yf2, 'Text':'Healthcare'},
+           {'yf':yf3, 'Text':'TipRanks'}]
+
+    plotPricesTracker(yfs, enddate)
 
     
