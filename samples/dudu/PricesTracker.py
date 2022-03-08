@@ -1,15 +1,16 @@
 from time import strftime, strptime
-from numpy import unicode_
+from numpy import NaN, unicode_
 from pandas.core.base import NoNewAttributesMixin
 import yfinance as yf
 import sys
 import os
-import numpy
+import numpy as np
 import csv
+import math
 import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
-from operator import mul
+from scipy.interpolate import interp1d
 
 
 
@@ -25,7 +26,7 @@ class CacheData:
     def get(self, date, ticker):
         return self.data.get(date.strftime("%Y-%m-%d")+"@"+ticker, None)
 
-    def load(self):
+    def load(self, startdate):
 
         if not os.path.exists(self.path):
             self.write()
@@ -34,10 +35,11 @@ class CacheData:
             spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
             for row in spamreader:
                 date   = row[0]
-                ticker   = row[1]
-                price         = float(row[2])
+                if datetime.datetime.strptime(date,'%Y-%m-%d') >= startdate:
+                    ticker   = row[1]
+                    price         = float(row[2])
                     
-                self.data[date+"@"+ticker] = price
+                    self.data[date+"@"+ticker] = price
                     
     def write(self):
         original_stdout = sys.stdout # Save a reference to the original standard output
@@ -58,39 +60,42 @@ class CacheData:
         sys.stdout = original_stdout
 
     def calculateDailyReturn(self, tickers, enddate):
-        sortedData = dict(sorted(self.data.items(), key=lambda item: item[0].split("@")[0]))
+        sortedData = dict(sorted([it for it in self.data.items()  if it[0].split("@")[1] in tickers], key=lambda item: item[0].split("@")[0]))
         x = []
         y = []
         prices1 = {}
         prices2 = {}
         weight = 1 / len(tickers)
-        date = datetime.datetime.now()
+        previousdate = datetime.datetime.now()
+        
 
         for itemInfo in sortedData:
             item = itemInfo.split("@")
+            currentdate = datetime.datetime.strptime(item[0], '%Y-%m-%d')
             #if datetime.datetime.strptime(item[0], "%Y-%m-%d") >= enddate:
              #   break
             
-            if (date !=  item[0]):
+            if (previousdate !=  currentdate):
                 if len(prices1) > 0:
 
                     if len(prices2) > 0:
-                        i = 0
-
-                        x.append(date)
+                        x.append(previousdate)
                         y.append(round(sum([(prices1[p1] / prices2[p1] - 1) * weight for p1 in prices1 if p1 in prices2]) * 100,5))
                         
+                        delta = (currentdate-previousdate).days
+                        for i in range(delta-1):
+                            x.append(previousdate + datetime.timedelta(days=i+1))
+                            y.append(NaN)
+
 
                     prices2 = prices1
                     prices1 = {}
                 
-            date = item[0]
-            
-            if item[1] in tickers:
-                prices1[item[1]] = sortedData[itemInfo]
+            previousdate = currentdate
+            prices1[item[1]] = sortedData[itemInfo]
 
         if len(prices2) > 0: 
-            x.append(date)
+            x.append(previousdate)
             y.append(round(sum([(prices1[p1] / prices2[p1] - 1) * weight for p1 in prices1 if p1 in prices2]) * 100,5))
 
         return [x,y]
@@ -101,9 +106,9 @@ class CacheData:
 class YahooFinancePricesTracker:
     tickers = []
 
-    def __init__(self):
+    def __init__(self, startdate):
         self.cacheddata = CacheData()
-        self.cacheddata.load()
+        self.cacheddata.load(startdate)
 
     def loadPeriodData(self, ticker, startDate, endDate):
         endDate = endDate - datetime.timedelta(days=1)
@@ -149,8 +154,9 @@ class YahooFinancePricesTracker:
         return price
 
     def downloadData(self, ticker, startDate, enddate):
+        enddate = enddate + datetime.timedelta(days=1)
         orig_stdout = sys.stdout
-        sys.stdout=open('log.txt','w')
+        sys.stdout=open('log.txt','a')
         data = yf.download(ticker, group_by="Ticker", start=startDate, end=enddate, interval="1d")
         sys.stdout.close()
         sys.stdout=orig_stdout 
@@ -205,7 +211,29 @@ class YahooFinancePricesTracker:
             print(f"Unexpected {err=}, {type(err)=}")
             print("Error with: ", ticker)
 
-    
+def nan_helper(y):
+    """Helper to handle indices and logical indices of NaNs.
+
+    Input:
+        - y, 1d numpy array with possible NaNs
+    Output:
+        - nans, logical indices of NaNs
+        - index, a function, with signature indices= index(logical_indices),
+          to convert logical indices of NaNs to 'equivalent' indices
+    Example:
+        >>> # linear interpolation of NaNs
+        >>> nans, x= nan_helper(y)
+        >>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+    """
+
+    return np.isnan(y), lambda z: z.nonzero()[0]
+
+def interpolate(data):
+    y = np.array(data)
+    nans, x= nan_helper(y)
+    y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+    return y
+
 def plotPricesTracker(yfs, enddate):
     i = 0
     data = []
@@ -219,7 +247,7 @@ def plotPricesTracker(yfs, enddate):
     
     for p in yfs:
         data.append(p['yf'].cacheddata.calculateDailyReturn([ticker['ticker'] for ticker in p['yf'].tickers], enddate))
-        ax1.plot(data[-1][0], data[-1][1], label=p['Text'])
+        ax1.plot(data[-1][0], interpolate(data[-1][1]), label=p['Text'])
         ax1.legend()
         ax1.set_title('Daily Returns')
         products.append(1)
@@ -229,7 +257,8 @@ def plotPricesTracker(yfs, enddate):
     dataIndex = 0
     for dataIndex in range(len(yfs)):
         for i in range(len(data[dataIndex][1])):
-            products[dataIndex] = products[dataIndex] * (data[dataIndex][1][i] / 100 + 1)
+            if math.isnan(data[dataIndex][1][i]) == False:
+                products[dataIndex] = products[dataIndex] * (data[dataIndex][1][i] / 100 + 1)
             yaxis[dataIndex].append(round((products[dataIndex] - 1) * 100,5))
 
 
@@ -283,28 +312,29 @@ if __name__ == '__main__':
     tickers3 = [{'ticker':'VLO', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}, 
                {'ticker':'TTE', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
                {'ticker':'AMCR', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
+
+    tickers4 = [{'ticker':'TQQQ', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
     #lst = [ticker['ticker'] for ticker in tickers2]
     #YahooFinancePricesTracker().getPeriodData('ASML', datetime.datetime.strptime('2022-03-01', '%Y-%m-%d'), datetime.datetime.strptime('2022-03-02', '%Y-%m-%d'))
 
     #tickers1 = [{'ticker':'WILK.TA', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
 
-    enddate = datetime.datetime.now()
+    enddate = datetime.datetime.now() - datetime.timedelta(days = 1)
     startdate = datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')
     if enddate.weekday() >= 5:
         enddate = enddate - datetime.timedelta(days = enddate.weekday() - 4)
 
-    # For testing purposes only!
-    yf1 = YahooFinancePricesTracker()
-    yf2 = YahooFinancePricesTracker()
-    yf3 = YahooFinancePricesTracker()
+    
+    yfs = [{'yf':YahooFinancePricesTracker(startdate), 'Text':'Excellence'},
+           {'yf':YahooFinancePricesTracker(startdate), 'Text':'Healthcare'},
+           {'yf':YahooFinancePricesTracker(startdate), 'Text':'TipRanks'},
+           {'yf':YahooFinancePricesTracker(startdate), 'Text':'Stuff'}]
 
-    yf1.PrintResults(tickers1, startdate, enddate, False)
-    yf2.PrintResults(tickers2, startdate, enddate, False)
-    yf3.PrintResults(tickers3, startdate, enddate, False)
+    yfs[0]['yf'].PrintResults(tickers1, startdate, enddate, False)
+    yfs[1]['yf'].PrintResults(tickers2, startdate, enddate, False)
+    yfs[2]['yf'].PrintResults(tickers3, startdate, enddate, False)
+    yfs[3]['yf'].PrintResults(tickers4, startdate, enddate, False)
 
-    yfs = [{'yf':yf1, 'Text':'Excellence'},
-           {'yf':yf2, 'Text':'Healthcare'},
-           {'yf':yf3, 'Text':'TipRanks'}]
 
     plotPricesTracker(yfs, enddate)
 
