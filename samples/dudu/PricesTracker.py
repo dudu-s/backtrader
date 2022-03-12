@@ -111,19 +111,20 @@ class YahooFinancePricesTracker:
         self.cacheddata.load(startdate)
 
     def loadPeriodData(self, ticker, startDate, endDate):
-        endDate = endDate - datetime.timedelta(days=1)
-        prices = dict()
         price = None
         delta = (endDate - startDate).days + 1
         date = startDate
-        day = 0
+        needToLoadData=False
         
         # Where cache ends
-        while not self.cacheddata.get(date, ticker) is None and day <= delta:
+        for day in range(delta):
             date = startDate + datetime.timedelta(days = day)
-            day = day + 1
+            if self.cacheddata.get(date, ticker) is None:
+                needToLoadData = True
+            else:
+                needToLoadData = False
 
-        if date < endDate:
+        if needToLoadData:
             data  = self.downloadData(ticker, date, endDate)
             
             i = 0
