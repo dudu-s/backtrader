@@ -111,27 +111,39 @@ class YahooFinancePricesTracker:
         self.cacheddata.load(startdate)
 
     def loadPeriodData(self, ticker, startDate, endDate):
-        price = None
         delta = (endDate - startDate).days + 1
-        date = startDate
-        needToLoadData=False
+        startQuery = None
+        endQuery = None
         
-        # Where cache ends
+        #1st condition - no  data at all
         for day in range(delta):
             date = startDate + datetime.timedelta(days = day)
-            if self.cacheddata.get(date, ticker) is None:
-                needToLoadData = True
-            else:
-                needToLoadData = False
-
-        if needToLoadData:
-            data  = self.downloadData(ticker, date, endDate)
             
-            i = 0
-            for i in range(len(data.Close)):
-                price = round(data.Close[i],2)
-                date = data.Close.index[i]
-                self.cacheddata.add(date, ticker, price)
+            if self.cacheddata.get(date, ticker) is None:
+                if endQuery is None:
+                    endQuery = date
+
+            if not self.cacheddata.get(date, ticker) is None:
+                if startQuery is None:
+                    self.downloadAndCache(ticker, startDate, date)
+                    startQuery = startDate
+                endQuery = None
+                
+        if not endQuery is None:
+            self.downloadAndCache(ticker, endQuery, endDate)
+        
+        
+    
+    def downloadAndCache(self, ticker, startDate, endDate):
+        if startDate == endDate:
+            return
+        
+        data  = self.downloadData(ticker, startDate, endDate)
+            
+        for i in range(len(data.Close)):
+            price = round(data.Close[i],2)
+            date = data.Close.index[i]
+            self.cacheddata.add(date, ticker, price)
 
     def getLastValidPrice(self, ticker, startDate):
         price = self.getSingleDayPrice(ticker, startDate)
@@ -315,6 +327,9 @@ if __name__ == '__main__':
                {'ticker':'AMCR', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
 
     tickers4 = [{'ticker':'TQQQ', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
+
+    tickers5 = [{'ticker':'GLNG', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-14', '%Y-%m-%d')}]
+
     #lst = [ticker['ticker'] for ticker in tickers2]
     #YahooFinancePricesTracker().getPeriodData('ASML', datetime.datetime.strptime('2022-03-01', '%Y-%m-%d'), datetime.datetime.strptime('2022-03-02', '%Y-%m-%d'))
 
@@ -329,12 +344,14 @@ if __name__ == '__main__':
     yfs = [{'yf':YahooFinancePricesTracker(startdate), 'Text':'Excellence'},
            {'yf':YahooFinancePricesTracker(startdate), 'Text':'Healthcare'},
            {'yf':YahooFinancePricesTracker(startdate), 'Text':'TipRanks'},
-           {'yf':YahooFinancePricesTracker(startdate), 'Text':'Stuff'}]
+           {'yf':YahooFinancePricesTracker(startdate), 'Text':'Stuff'},
+           {'yf':YahooFinancePricesTracker(tickers5[0]['StartDate']), 'Text':'TipRanks2'}]
 
     yfs[0]['yf'].PrintResults(tickers1, startdate, enddate, False)
     yfs[1]['yf'].PrintResults(tickers2, startdate, enddate, False)
     yfs[2]['yf'].PrintResults(tickers3, startdate, enddate, False)
     yfs[3]['yf'].PrintResults(tickers4, startdate, enddate, False)
+    yfs[4]['yf'].PrintResults(tickers5, tickers5[0]['StartDate'], enddate, False)
 
 
     plotPricesTracker(yfs, enddate)
