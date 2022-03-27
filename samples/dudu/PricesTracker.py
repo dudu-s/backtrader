@@ -106,9 +106,11 @@ class CacheData:
 class YahooFinancePricesTracker:
     tickers = []
 
-    def __init__(self, startdate):
+    def __init__(self, tickers, startdate):
         self.cacheddata = CacheData()
         self.cacheddata.load(startdate)
+        self.startDate = startdate
+        self.tickers = tickers
 
     def loadPeriodData(self, ticker, startDate, endDate):
         delta = (endDate - startDate).days + 1
@@ -176,24 +178,24 @@ class YahooFinancePricesTracker:
         return data
 
 
-    def PrintResults(self, tickers, startDate, enddate, detailed=False, plot=True):
-        self.tickers = tickers
+    def PrintResults(self, enddate, detailed=False, plot=True):
+        #self.tickers = tickers
         #startDate = enddate - datetime.timedelta(days = 3)
 
         df_list = list()
         df_list.clear()
         lines = []
 
-        weight = 1/len(tickers)
+        weight = 1/len(self.tickers)
         average = 0
 
 
         try:
 
-            for tickerInfo in tickers:
+            for tickerInfo in self.tickers:
                 ticker = tickerInfo['ticker']
 
-                self.loadPeriodData(ticker, startDate, enddate)
+                self.loadPeriodData(ticker, self.startDate, enddate)
                 closePrice = self.getLastValidPrice(ticker, enddate-datetime.timedelta(days=1))
                 refPrice = self.getSingleDayPrice(ticker, tickerInfo['StartDate'])
                 
@@ -287,73 +289,82 @@ def plotPricesTracker(yfs, enddate):
 
 if __name__ == '__main__':
 
-    
-    
-    tickers1 = [{'ticker':'TSM', 'DestPrice':160, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'QCom', 'DestPrice':250, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'MSFT', 'DestPrice':365, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'GOOG', 'DestPrice':3500, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'AMZN', 'DestPrice':4000, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'V', 'DestPrice':302, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'UPS', 'DestPrice':272, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'SPY', 'DestPrice':520, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+    tickers = [# Excelense
+                ['Excelense',
+                {'ticker':'TSM', 'DestPrice':160, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'QCom', 'DestPrice':250, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'MSFT', 'DestPrice':365, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'GOOG', 'DestPrice':3500, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'AMZN', 'DestPrice':4000, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'V', 'DestPrice':302, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'UPS', 'DestPrice':272, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'SPY', 'DestPrice':520, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                ],
+                # Hygea
+                ['Hygea',
+                {'ticker':'PHGE', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}, 
+                {'ticker':'MITC', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'DNA', 'DestPrice':12.34, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'ENTX', 'DestPrice':3.82, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'EDIT', 'DestPrice':36.1, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'CLGN', 'DestPrice':17.11, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'EYES', 'DestPrice':2.41, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'EXAS', 'DestPrice':97.61, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'MDWD', 'DestPrice':3.2, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'CHEK', 'DestPrice':0.81, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'RCEL', 'DestPrice':17.81, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'NNOX', 'DestPrice':24.94, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'ENLV', 'DestPrice':8.86, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'ASML', 'DestPrice':750, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'WILK.TA', 'DestPrice':309.41, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'ALCRB.PA', 'DestPrice':38.9, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'NXFR.TA', 'DestPrice':758.28, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'MTLF.TA', 'DestPrice':1076.38, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'NXGN.TA', 'DestPrice':288.6, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'ICCM.TA', 'DestPrice':1561.99, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                ],
+
+                # TQQQ
+                ['TQQQ',
+                 {'ticker':'TQQQ', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}],
+
+                # TipRanks1
+                ['TipRanks1',
+                 {'ticker':'VLO', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}, 
+                {'ticker':'TTE', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
+                {'ticker':'AMCR', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}],
+
+                # TipRanks2
+                ['TipRanks2',
+                 {'ticker':'GLNG', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-14', '%Y-%m-%d')}],
+
+                # TipRanks3
+                ['TipRanks3',
+                 {'ticker':'ERF', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-20', '%Y-%m-%d')},
+                {'ticker':'TALO', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-20', '%Y-%m-%d')}],
+               
+                # TipRanks4
+                ['TipRanks4',
+                 {'ticker':'TXG', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-24', '%Y-%m-%d')},
+                {'ticker':'LEGN', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-24', '%Y-%m-%d')},
+                {'ticker':'PEN', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-24', '%Y-%m-%d')}],
+               
+                # TipRanks5
+                ['TipRanks5',
+                 {'ticker':'POST', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-24', '%Y-%m-%d')},
+                {'ticker':'MTBC', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-24', '%Y-%m-%d')}]
                ]
-
-   
-    tickers2 = [{'ticker':'PHGE', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}, 
-               {'ticker':'MITC', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'DNA', 'DestPrice':12.34, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'ENTX', 'DestPrice':3.82, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'EDIT', 'DestPrice':36.1, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'CLGN', 'DestPrice':17.11, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'EYES', 'DestPrice':2.41, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'EXAS', 'DestPrice':97.61, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'MDWD', 'DestPrice':3.2, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'CHEK', 'DestPrice':0.81, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'RCEL', 'DestPrice':17.81, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'NNOX', 'DestPrice':24.94, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'ENLV', 'DestPrice':8.86, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'ASML', 'DestPrice':750, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'WILK.TA', 'DestPrice':309.41, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'ALCRB.PA', 'DestPrice':38.9, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'NXFR.TA', 'DestPrice':758.28, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'MTLF.TA', 'DestPrice':1076.38, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'NXGN.TA', 'DestPrice':288.6, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'ICCM.TA', 'DestPrice':1561.99, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               ]
-
-    tickers3 = [{'ticker':'VLO', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}, 
-               {'ticker':'TTE', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')},
-               {'ticker':'AMCR', 'DestPrice':6.54, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
-
-    tickers4 = [{'ticker':'TQQQ', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
-
-    tickers5 = [{'ticker':'GLNG', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-14', '%Y-%m-%d')}]
-
-    #lst = [ticker['ticker'] for ticker in tickers2]
-    #YahooFinancePricesTracker().getPeriodData('ASML', datetime.datetime.strptime('2022-03-01', '%Y-%m-%d'), datetime.datetime.strptime('2022-03-02', '%Y-%m-%d'))
-
-    #tickers1 = [{'ticker':'WILK.TA', 'DestPrice':2.08, 'StartDate':datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')}]
-
+    
+               
     enddate = datetime.datetime.now() - datetime.timedelta(days = 1)
-    startdate = datetime.datetime.strptime('2022-03-01', '%Y-%m-%d')
     if enddate.weekday() >= 5:
         enddate = enddate - datetime.timedelta(days = enddate.weekday() - 4)
 
+    yfs = [{'yf':YahooFinancePricesTracker(ticker[1:], ticker[1]['StartDate']), 'Text':ticker[0]} for ticker in tickers]
+
+    for p in yfs:
+        p['yf'].PrintResults(enddate, False)
     
-    yfs = [{'yf':YahooFinancePricesTracker(startdate), 'Text':'Excellence'},
-           {'yf':YahooFinancePricesTracker(startdate), 'Text':'Healthcare'},
-           {'yf':YahooFinancePricesTracker(startdate), 'Text':'TipRanks'},
-           {'yf':YahooFinancePricesTracker(startdate), 'Text':'Stuff'},
-           {'yf':YahooFinancePricesTracker(tickers5[0]['StartDate']), 'Text':'TipRanks2'}]
-
-    yfs[0]['yf'].PrintResults(tickers1, startdate, enddate, False)
-    yfs[1]['yf'].PrintResults(tickers2, startdate, enddate, False)
-    yfs[2]['yf'].PrintResults(tickers3, startdate, enddate, False)
-    yfs[3]['yf'].PrintResults(tickers4, startdate, enddate, False)
-    yfs[4]['yf'].PrintResults(tickers5, tickers5[0]['StartDate'], enddate, False)
-
-
     plotPricesTracker(yfs, enddate)
 
-    
+   
